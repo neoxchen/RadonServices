@@ -34,6 +34,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
                                  entrypoint: str = "python entry.py",
                                  environment: Optional[Dict[str, any]] = None,
                                  mounts: Optional[List[Mount]] = None,
+                                 network: Optional[str] = None,
                                  max_fails: int = 10):
     """
     Attempts to boot the container until it is successful
@@ -62,7 +63,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
                 command=entrypoint,
                 environment=environment,
                 mounts=mounts,
-                network_mode="bridge",  # TODO: double check this
+                network=network,
                 detach=True,
                 auto_remove=True
             )

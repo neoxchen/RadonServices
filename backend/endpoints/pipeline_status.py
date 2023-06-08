@@ -5,7 +5,7 @@ from endpoints.wrappers import safe_request
 
 
 class PipelineStatusEndpoint(Resource):
-    path = "/pipeline/status/<pipeline_id>"
+    path = "/pipelines/status/<pipeline_id>"
 
     @staticmethod
     def bind_self(api):

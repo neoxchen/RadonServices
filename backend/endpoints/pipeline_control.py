@@ -8,7 +8,7 @@ from utils.docker_interface import boot_container_until_success
 
 
 class PipelineEndpoint(Resource):
-    path = "/pipeline/<pipeline_type>"
+    path = "/pipelines/<pipeline_type>"
 
     @staticmethod
     def bind_self(api):
@@ -42,14 +42,14 @@ class PipelineEndpoint(Resource):
         # Dynamically spin up the corresponding pipeline
         log.request(uid, f"Spinning up a new '{pipeline_type}' pipeline...")
 
-        fits_volume = Mount(target="/fits-data", source="fits-data", type="volume")
-
+        fits_volume = Mount(target="/fits-data", source="/home/neo/data/fits", type="bind")
         new_ports = boot_container_until_success(
             f"pipeline-{pipeline_type}",
             environment={
                 "PIPELINE_TYPE": pipeline_type
             },
-            mounts=[fits_volume]
+            mounts=[fits_volume],
+            network="radonservices_radon_network"  # note the radonservices prefix because compose adds that
         )
 
         return make_response({

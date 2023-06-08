@@ -1,25 +1,5 @@
 version: "3"
 services:
-  # Backend controller, also a Flask API
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    volumes:
-      - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
-
-  # Frontend container
-  #  frontend:
-  #    build:
-  #      context: ./path/to/your/frontend
-  #      dockerfile: Dockerfile
-  #    volumes:
-  #      - ./path/to/your/frontend:/app
-  #    ports:
-  #      - 5451:3000
-
   # Metadata database
   postgres:
     image: postgres
@@ -29,23 +9,38 @@ services:
       - POSTGRES_DB=radon_sql
     volumes:
       # Special volume for Postgres DB
-      # TODO: change the host path after deployment
-      - D:/One/AI/Radon2/data/sql:/var/lib/postgresql/data
+      - /home/neo/data/postgres:/var/lib/postgresql/data
     # TODO: remove this port after testing is complete
     ports:
-      - "5450:5432"
+      - "5451:5432"
+    networks:
+      - radon_network
+
+  # Backend controller, also a Flask API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # TODO: remove this port after testing is complete
+    ports:
+      - "5450:5000"
+    volumes:
+      # Docker socket so that the backend can dynamically spawn containers
+      - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
+    depends_on:
+      - postgres
+    networks:
+      - radon_network
+
+  # Frontend container
+  #  frontend:
+  #    build:
+  #      context: ./path/to/your/frontend
+  #      dockerfile: Dockerfile
+  #    ports:
+  #      - 5450:3000
 
   # Pipeline containers will be spawned dynamically, so they are not defined here
 
-volumes:
-  # Shared volume for the FITS files (using file system)
-  fits-data:
-    driver: local
-    driver_opts:
-      type: "none"
-      o: "bind"
-      # TODO: change the host path after deployment
-      device: "D:/One/AI/Radon2/data/fits"
-
-#networks:
-#  my_network:
+networks:
+  radon_network:
