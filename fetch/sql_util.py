@@ -40,37 +40,3 @@ def postgres() -> Generator[cursor, None, None]:
         connection.rollback()
     finally:
         pool.putconn(connection)
-
-
-if __name__ == "__main__":
-    # Creates the two data tables as an example of how to use this class
-
-    # noinspection SqlNoDataSourceInspection
-    create_galaxies = """
-        CREATE TABLE galaxies (
-            id              SERIAL PRIMARY KEY NOT NULL,
-            source_id       VARCHAR            NOT NULL UNIQUE,
-            ra              DECIMAL(25, 20)    NOT NULL,
-            dec             DECIMAL(25, 20)    NOT NULL,
-            gal_prob        DECIMAL(25, 20)    NOT NULL,
-            bin             SMALLINT           NOT NULL,
-            status          VARCHAR            NOT NULL DEFAULT 'Pending',
-            failed_attempts SMALLINT           NOT NULL DEFAULT 0
-        );"""
-
-    # noinspection SqlNoDataSourceInspection
-    create_fits = """
-        CREATE TABLE fits_data (
-            source_id      VARCHAR PRIMARY KEY REFERENCES galaxies (source_id),
-            has_data_g     BOOLEAN NOT NULL,
-            has_data_r     BOOLEAN NOT NULL,
-            has_data_i     BOOLEAN NOT NULL,
-            has_data_z     BOOLEAN NOT NULL,
-            fits_file_path VARCHAR NOT NULL
-        );"""
-
-    with postgres() as cursor:
-        cursor.execute(create_galaxies)
-        cursor.execute(create_fits)
-
-    print("Successfully created galaxies and fits_data tables!")

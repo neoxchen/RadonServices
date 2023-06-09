@@ -7,6 +7,7 @@ from psycopg2 import sql
 from requests.exceptions import Timeout
 from tqdm import tqdm
 
+from parallel_util import run_in_parallel
 from sql_util import postgres
 
 # Fetch environment variables or use defaults
@@ -18,6 +19,14 @@ print(f"Configured environment variable MAX_FAILS as {MAX_FAILS}")
 
 SQL_BATCH_SIZE = int(os.getenv("SQL_BATCH_SIZE", 200))
 print(f"Configured environment variable SQL_BATCH_SIZE as {SQL_BATCH_SIZE}")
+
+# Dynamic flag to stop the script
+stop_fetch = False
+
+
+def set_stop_fetch():
+    global stop_fetch
+    stop_fetch = True
 
 
 def build_url(ra: float, dec: float, size: int = 40, pix_scale: float = 0.262, bands: str = "griz"):
@@ -31,6 +40,7 @@ def fetch(url: str, fits_path: str) -> bool:
         with requests.get(url, allow_redirects=True, timeout=10) as r:
             status = r.status_code
             if status != 200:
+                # TODO: add 503 service unavailable check
                 return False
 
             # Write to the file path
@@ -46,11 +56,12 @@ def fetch(url: str, fits_path: str) -> bool:
 
 def process(row):
     """ Attempts to fetch the FITS file for the given galaxy row """
-    uid, source_id, ra, dec, gal_prob, bin, status, failed_attempts = row
+    sleep(0.6)
+    uid, source_id, ra, dec, gal_prob, bin_id, status, failed_attempts = row
 
     # Build URL & fetch from API
     url = build_url(ra, dec)
-    file_path = f"{DATA_PATH}/b{bin}/{source_id}.fits"
+    file_path = f"{DATA_PATH}/b{bin_id}/{source_id}.fits"
     successful = fetch(url, file_path)
 
     # Decide what to do based on the fetch results
@@ -69,8 +80,12 @@ def process(row):
 
 
 def run_script():
+    print("Starting fetching pipeline script...")
     iteration = 0
-    while True:
+    while not stop_fetch:
+        # Minor sleep before each iteration
+        sleep(2)
+
         print(f"Iteration #{iteration} started...")
         processed_results = {}
         with postgres() as cursor:
@@ -90,25 +105,23 @@ def run_script():
             if not results:
                 break
 
-            # Process the rows in the fetched entries
-            for row in (pbar := tqdm(results)):
-                uid, status, failed_attempts = process(row)
-                pbar.set_description(f"G{uid} - {status}")
-                processed_results[uid] = (status, failed_attempts)
-                sleep(0.5)
+            # Process in parallel with 5 threads
+            with tqdm(range(len(results))) as pbar:
+                processed = run_in_parallel(process, [[row] for row in results], thread_count=5, update_callback=lambda: pbar.update())
 
+            for uid, status, failed_attempts in processed:
+                processed_results[uid] = (status, failed_attempts)
+
+            # Update database
             values_str = ",".join(
                 cursor.mogrify("(%s, %s, %s)", (id, status, failed_attempts)).decode("utf-8") for id, (status, failed_attempts) in processed_results.items())
-            update_query = f"""
+            cursor.execute(f"""
                 UPDATE galaxies
                 SET status = data.status,
                     failed_attempts = data.failed_attempts
                 FROM (VALUES {values_str}) AS data (id, status, failed_attempts)
                 WHERE galaxies.id = data.id
-            """
-
-            # Write final metadata to database
-            cursor.execute(update_query)
+            """)
 
         # Call API to update status
         galaxy_ids, successes, fails = [], [], []
@@ -124,7 +137,12 @@ def run_script():
         })
 
         print(f"Iteration #{iteration} ended with {len(successes)} successes and {len(fails)} fails (total: {len(galaxy_ids)})!")
+
+        # Detect if all attempts have failed
+        if len(fails) == len(galaxy_ids):
+            print("All attempts have failed, stopping fetch script...")
+            break
+
         iteration += 1
 
-        # Minor sleep after closing cursor
-        sleep(5)
+    print("Fetching pipeline script execution complete!")
