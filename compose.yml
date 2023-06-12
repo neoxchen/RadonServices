@@ -21,12 +21,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # TODO: remove this port after testing is complete
-    ports:
-      - "5451:5000"
     volumes:
       # Docker socket so that the backend can dynamically spawn containers
       - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
+    # TODO: remove this port after testing is complete
+    ports:
+      - "5451:5000"
     depends_on:
       - postgres
     networks:
@@ -37,6 +37,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    volumes:
+      # FITS data volume, used to preview galaxy data
+      - /home/neo/data/fits:/fits-data
     ports:
       - "5450:8501"
     networks:

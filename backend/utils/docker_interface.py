@@ -1,6 +1,6 @@
 import atexit
 import traceback
-from collections import defaultdict
+import uuid
 from typing import Dict, List, Optional
 
 import docker
@@ -8,19 +8,22 @@ from docker.errors import APIError
 from docker.types import Mount
 
 import utils.log_util as log
+from shared_states import DynamicContainer, PIPELINE_CONTAINERS
 
-# Starting port for containers
+# Starting port for each type of containers
 # - this will be incremented for each container booted
-host_port = 5455
+# - matches the image tag (e.g. pipeline-radon)
+pipeline_ports = {
+    "pipeline-fetch": 6500,
+    "pipeline-radon": 6600
+}
 
 # List of used ports
 ports = []
 
 # Mapping of { port => docker container object }
+# - used when backend shuts down to shut down all dynamic containers
 port_container_map: Dict[int, docker.models.containers.Container] = {}
-
-# Mapping of { pipeline type => list of ports }
-pipeline_ports_map: Dict[str, List[int]] = defaultdict(list)
 
 # Flag to ignore the liveliness check
 # - should only be set once, and that is upon _teardown() is called
@@ -48,22 +51,29 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
         entrypoint (str): entrypoint command to run
         environment (dict): environment variables to pass to the container
         mounts (list): list of mounts (e.g. volumes) to attach to the container
+        network (str): network to attach the container to
         max_fails (int): max number of boot failures before raising an error
     """
-    global host_port, ports, port_container_map, pipeline_ports_map
+    global pipeline_ports, ports, port_container_map
 
     success = 0
     fails = 0
     new_ports = []
     while success < count and fails < max_fails:
         try:
-            # Add port information to environment variable
+            # Get port to use for this container type
+            new_port = pipeline_ports[image_tag]
+
+            # Add extra information to environment variable
             if environment is None:
                 environment = {}
-            environment["PORT"] = host_port
+            environment["PORT"] = new_port
+
+            container_id = str(uuid.uuid4())
+            environment["CONTAINER_ID"] = container_id
 
             # Attempts to boot the container at the port
-            new_container = DOCKER_CLIENT.containers.run(
+            new_container_object = DOCKER_CLIENT.containers.run(
                 image=f"{repository}:{image_tag}",
                 command=entrypoint,
                 environment=environment,
@@ -74,13 +84,17 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             )
 
             # Successful boot! save container info
-            ports.append(host_port)
-            port_container_map[host_port] = new_container
-            pipeline_ports_map[image_tag].append(host_port)
+            new_container = DynamicContainer(new_container_object, container_id, image_tag, new_port)
+            PIPELINE_CONTAINERS[image_tag].append(new_container)
+            print(PIPELINE_CONTAINERS[image_tag])
 
-            new_ports.append(host_port)
+            # Save port/shutdown info
+            ports.append(new_port)
+            port_container_map[new_port] = new_container
 
-            log.info(f"Successfully loaded '{image_tag}' container at port {host_port}!")
+            new_ports.append(new_port)
+
+            log.info(f"Successfully loaded '{image_tag}' container at port {new_port}!")
             success += 1
         except APIError as e:
             log.error(f"Encountered exception while booting '{image_tag}' container")
@@ -88,7 +102,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             log.error(f"{traceback.format_exc()}")
             fails += 1
 
-        host_port += 1
+        pipeline_ports[image_tag] += 1
 
     if fails == max_fails:
         raise APIError(f"Unable to boot '{image_tag}' containers, failed {max_fails} times!")
