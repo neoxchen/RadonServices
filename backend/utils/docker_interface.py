@@ -57,6 +57,11 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
     new_ports = []
     while success < count and fails < max_fails:
         try:
+            # Add port information to environment variable
+            if environment is None:
+                environment = {}
+            environment["PORT"] = host_port
+
             # Attempts to boot the container at the port
             new_container = DOCKER_CLIENT.containers.run(
                 image=f"{repository}:{image_tag}",

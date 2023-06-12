@@ -46,7 +46,7 @@ class PipelineEndpoint(Resource):
         new_ports = boot_container_until_success(
             f"pipeline-{pipeline_type}",
             environment={
-                "PIPELINE_TYPE": pipeline_type
+                # Note: port information will be automatically added
             },
             mounts=[fits_volume],
             network="radonservices_radon_network"  # note the radonservices prefix because compose adds that

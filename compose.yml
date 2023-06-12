@@ -9,10 +9,10 @@ services:
       - POSTGRES_DB=radon_sql
     volumes:
       # Special volume for Postgres DB
-      - /home/neo/data/postgres:/var/lib/postgresql/data
+      - /home/neo/data/postgres2:/var/lib/postgresql/data
     # TODO: remove this port after testing is complete
     ports:
-      - "5451:5432"
+      - "5452:5432"
     networks:
       - radon_network
 
@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     # TODO: remove this port after testing is complete
     ports:
-      - "5450:5000"
+      - "5451:5000"
     volumes:
       # Docker socket so that the backend can dynamically spawn containers
       - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
@@ -33,12 +33,14 @@ services:
       - radon_network
 
   # Frontend container
-  #  frontend:
-  #    build:
-  #      context: ./path/to/your/frontend
-  #      dockerfile: Dockerfile
-  #    ports:
-  #      - 5450:3000
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5450:8501"
+    networks:
+      - radon_network
 
   # Pipeline containers will be spawned dynamically, so they are not defined here
 
