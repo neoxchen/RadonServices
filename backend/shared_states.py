@@ -35,6 +35,6 @@ def get_pipeline_type(pipeline_id: str) -> Optional[str]:
 ##########################
 # Pipeline Status States #
 ##########################
-# Map of { pipeline type => JSON object (dict) }
+# Map of { container_id => JSON object (dict) }
 # - contains only the data of the latest iteration (previous iterations are overridden)
-PIPELINE_ITERATION_STATUS = defaultdict(dict)
+CONTAINER_STATUS: Dict[str, Dict[str, any]] = defaultdict(dict)
