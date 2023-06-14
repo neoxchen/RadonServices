@@ -1,6 +1,8 @@
 import requests
 import streamlit as st
 
+from config import BACKEND_BASE_URL
+
 st.set_page_config(
     page_title="Pipeline Status",
 )
@@ -8,15 +10,15 @@ st.set_page_config(
 
 @st.cache_data
 def get_pipelines():
-    response = requests.get(f"http://localhost:5000/pipelines/all")
+    response = requests.get(f"{BACKEND_BASE_URL}/pipelines/all")
     if response.status_code != 200:
         return None
     return response.json()["pipelines"]
 
 
 @st.cache_data
-def get_pipeline_status(pipeline_id):
-    container_status_response = requests.get(f"http://localhost:5000/pipelines/status/{container['id']}")
+def get_pipeline_status(container_id):
+    container_status_response = requests.get(f"{BACKEND_BASE_URL}/pipelines/status/{container_id}")
     if container_status_response.status_code != 200:
         return None
     return container_status_response.json()["status"]
@@ -27,12 +29,35 @@ def clear_all_cache():
     get_pipeline_status.clear()
 
 
+# State variables
+if "create_pipeline_response" not in st.session_state:
+    st.session_state.create_pipeline_response = None
+
 # Website starts
-st.title("Active Pipelines")
+st.title("Pipeline Management")
 with st.sidebar:
     st.button(label="Clear Cache & Refresh", on_click=clear_all_cache)
 
+# Pipeline creation
+st.subheader("Create New Pipeline")
+pipeline_type = st.selectbox("Pipeline Type", ["fetch", "radon"])
+create_pipeline_button = st.button(label="Create Pipeline")
+if create_pipeline_button:
+    response = requests.post(f"{BACKEND_BASE_URL}/pipelines/{pipeline_type}")
+    st.session_state.create_pipeline_response = response.json()
+    clear_all_cache()
+
+if st.session_state.create_pipeline_response is not None:
+    st.write(
+        f"Successfully created new '{st.session_state.create_pipeline_response['new_pipeline']}' pipeline at ports {st.session_state.create_pipeline_response['ports']}")
+
+# Pipeline status
+st.header("Pipeline Status")
 pipelines = get_pipelines()
+if not pipelines:
+    st.write("No active pipelines")
+    st.stop()
+
 for pipeline_type, containers in pipelines.items():
     st.subheader(f"Pipeline: {pipeline_type.split('-')[1].title()} ({len(containers)} containers)")
     for i, container in enumerate(containers):
@@ -44,9 +69,13 @@ for pipeline_type, containers in pipelines.items():
 
             # Get container status
             container_json = get_pipeline_status(container['id'])
-            if container_json is not None:
+            if container_json is None:
+                st.write(f"Failed to get container status")
+            else:
                 st.write("#### Container Status:")
-                if container_json:
+                if not container_json:
+                    st.write("No status available yet")
+                else:
                     st.write(f"**Iteration:** #{container_json['iteration']}")
 
                     processed = container_json['galaxies']
@@ -62,7 +91,13 @@ for pipeline_type, containers in pipelines.items():
                     st.code(', '.join(fails))
 
                     st.write(f"Success rate: {len(successes) / len(processed) * 100:.2f}%")
+
+            # Shutdown button
+            shutdown_button = st.button(label="Shutdown Container", key=container['id'])
+            if shutdown_button:
+                response = requests.delete(f"{BACKEND_BASE_URL}/pipelines/{pipeline_type.split('-')[1]}", json={"container_id": container['id']})
+                if response.status_code != 200:
+                    st.write(f"Failed to shutdown container: {response.json()['error']}")
                 else:
-                    st.write("No status available yet")
-            else:
-                st.write(f"Failed to get container status")
+                    st.write(f"Successfully shutdown container")
+                clear_all_cache()

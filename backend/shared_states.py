@@ -32,6 +32,14 @@ def get_pipeline_type(pipeline_id: str) -> Optional[str]:
     return None
 
 
+def get_container_by_id(container_id: str) -> Optional[DynamicContainer]:
+    for containers in PIPELINE_CONTAINERS.values():
+        for container in containers:
+            if container.container_id == container_id:
+                return container
+    return None
+
+
 ##########################
 # Pipeline Status States #
 ##########################

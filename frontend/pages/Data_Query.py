@@ -5,6 +5,7 @@ import streamlit as st
 from astropy.io import fits
 from matplotlib import pyplot as plt
 
+from config import BACKEND_BASE_URL
 from sql_util import postgres
 
 # State variables
@@ -18,7 +19,7 @@ if "preview_galaxies_result" not in st.session_state:
 # Get recent galaxies
 @st.cache_data
 def get_recent_galaxies():
-    response = requests.get(f"http://localhost:5000/pipelines/all")
+    response = requests.get(f"{BACKEND_BASE_URL}/pipelines/all")
     if response.status_code != 200:
         return None
 
@@ -26,7 +27,7 @@ def get_recent_galaxies():
     results = []
     for pipeline_type, containers in pipelines.items():
         for container in containers:
-            container_status_response = requests.get(f"http://localhost:5000/pipelines/status/{container['id']}")
+            container_status_response = requests.get(f"{BACKEND_BASE_URL}:5000/pipelines/status/{container['id']}")
             if container_status_response.status_code != 200:
                 continue
             container_json = container_status_response.json()["status"]

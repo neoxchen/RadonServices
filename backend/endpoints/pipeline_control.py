@@ -1,10 +1,11 @@
+import requests
 from docker.types import Mount
-from flask import make_response
+from flask import make_response, request
 from flask_restful import Resource
 
 import utils.log_util as log
 from endpoints.wrappers import safe_request
-from shared_states import PIPELINE_CONTAINERS
+from shared_states import PIPELINE_CONTAINERS, get_container_by_id
 from utils.docker_interface import boot_container_until_success
 
 
@@ -85,3 +86,33 @@ class PipelineEndpoint(Resource):
             "new_pipeline": pipeline_type,
             "ports": new_ports
         }, 200)
+
+    @safe_request
+    def delete(self, pipeline_type, uid):
+        """ Deletes the pipeline of the corresponding type """
+        # Check if pipeline type is valid
+        valid_pipeline_types = ["fetch", "radon"]
+        pipeline_type = pipeline_type.lower()
+        if pipeline_type not in valid_pipeline_types:
+            return make_response({
+                "error": f"Invalid pipeline type {pipeline_type}!",
+                "valid_types": valid_pipeline_types
+            }, 400)
+
+        # Dynamically spin up the corresponding pipeline
+        container_id = request.get_json()["container_id"]
+        log.request(uid, f"Terminating the '{pipeline_type}' pipeline with container ID {container_id}...")
+
+        # Build URL to send to the pipeline
+        container = get_container_by_id(container_id)
+        if container is None:
+            return make_response({"error": f"Container with ID {container_id} does not exist!"}, 404)
+
+        url = f"http://localhost:{container.port}/control"
+
+        try:
+            response = requests.post(url, json={"action": "stop"})
+        except requests.exceptions.ConnectionError:
+            return make_response({"error": f"Container with ID {container_id} is not running!"}, 404)
+
+        return response
