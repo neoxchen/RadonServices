@@ -40,6 +40,15 @@ def get_container_by_id(container_id: str) -> Optional[DynamicContainer]:
     return None
 
 
+def get_container_address(container_id: str):
+    """ Returns the address of the container with the given ID """
+    container = get_container_by_id(container_id)
+    if container is None:
+        return None
+    ip = container.container.attrs['Config']['Hostname']
+    return f"http://{ip}:{container.port}"
+
+
 ##########################
 # Pipeline Status States #
 ##########################

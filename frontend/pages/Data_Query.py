@@ -27,14 +27,14 @@ def get_recent_galaxies():
     results = []
     for pipeline_type, containers in pipelines.items():
         for container in containers:
-            container_status_response = requests.get(f"{BACKEND_BASE_URL}:5000/pipelines/status/{container['id']}")
+            container_status_response = requests.get(f"{BACKEND_BASE_URL}/pipelines/status/{container['id']}")
             if container_status_response.status_code != 200:
                 continue
             container_json = container_status_response.json()["status"]
             if not container_json:
                 continue
-            results += [[galaxy_id, "successful"] for galaxy_id in container_json["successes"]]
-            results += [[galaxy_id, "failed"] for galaxy_id in container_json["fails"]]
+            results += [[str(galaxy_id), "successful"] for galaxy_id in container_json["successes"]]
+            results += [[str(galaxy_id), "failed"] for galaxy_id in container_json["fails"]]
 
     return results
 
@@ -56,7 +56,7 @@ def clear_all_cache():
 # Website starts
 st.title("Data Preview")
 with st.sidebar:
-    st.button(label="Clear Cache & Refresh", on_click=get_recent_galaxies)
+    st.button(label="Clear Cache & Refresh", on_click=clear_all_cache)
 
 
 def recent_table():
@@ -109,7 +109,6 @@ with col2:
 limit = st.number_input("Limit", min_value=1, max_value=1000, value=100, step=100)
 
 st.subheader("Generated SQL query:")
-"TODO: prevent SQL injection attacks"
 
 where_clauses = []
 if st.session_state.preview_galaxies:
@@ -176,16 +175,16 @@ else:
     for index, row in result_selected.iterrows():
         st.subheader(f"Galaxy {row['source_id']}")
         st.write(f"**Coordinates:** ({row['ra']}, {row['dec']})")
-        # fits_path = f"~/data/fits/b{row['bin']}/{row['source_id']}.fits"
-        # TODO: remove
-        fits_path = f"D:/One/AI/Radon2/data/fits/b{row['bin']}/{row['source_id']}.fits"
-        st.write(f"**FITS path:** {fits_path}")
+        actual_fits_path = f"/home/neo/data/fits/b{row['bin']}/{row['source_id']}.fits"
+        st.write(f"**FITS path:** {actual_fits_path}")
 
         # If status is fetched, display FITS image without rotation
         if row["status"] != "Fetched" and row["status"] != "Transformed":
             st.write("*FITS data has not been fetched for this galaxy*")
         else:
-            with fits.open(fits_path) as hdu_list:
+            # Container path is different because of mounted volume
+            container_fits_path = f"/fits-data/b{row['bin']}/{row['source_id']}.fits"
+            with fits.open(container_fits_path) as hdu_list:
                 fits_data = hdu_list[0].data
 
             # Annotate image with rotation if transformed

@@ -64,6 +64,8 @@ for pipeline_type, containers in pipelines.items():
         with st.expander(f"Container: {pipeline_type}-{i}"):
             st.write("#### Container Information:")
             st.write(f"**Container ID:** {container['id']}")
+            st.write(f"**Container Name:** {container['name']}")
+            st.write(f"**Internal Hostname:** {container['hostname']}")
             st.write(f"**Internal Port:** {container['port']}")
             st.write(f"**Status:** {container['status']}")
 
@@ -80,24 +82,27 @@ for pipeline_type, containers in pipelines.items():
 
                     processed = container_json['galaxies']
                     st.write(f"**Processed galaxies:** ({len(processed)})")
-                    st.code(', '.join(processed))
+                    st.code(', '.join(str(a) for a in processed))
 
                     successes = container_json['successes']
                     st.write(f"**Successful galaxies:** ({len(successes)})")
-                    st.code(', '.join(successes))
+                    st.code(', '.join(str(a) for a in successes))
 
                     fails = container_json['fails']
                     st.write(f"**Failed galaxies:** ({len(fails)})")
-                    st.code(', '.join(fails))
+                    st.code(', '.join(str(a) for a in fails))
 
                     st.write(f"Success rate: {len(successes) / len(processed) * 100:.2f}%")
 
             # Shutdown button
             shutdown_button = st.button(label="Shutdown Container", key=container['id'])
             if shutdown_button:
-                response = requests.delete(f"{BACKEND_BASE_URL}/pipelines/{pipeline_type.split('-')[1]}", json={"container_id": container['id']})
+                response = requests.delete(f"{BACKEND_BASE_URL}/pipelines/{pipeline_type.split('-')[1]}",
+                                           json={"container_id": container['id']})
                 if response.status_code != 200:
                     st.write(f"Failed to shutdown container: {response.json()['error']}")
+                    with st.expander("Traceback"):
+                        st.write(response.json()["details"])
                 else:
-                    st.write(f"Successfully shutdown container")
+                    st.write(f"Successfully sent shutdown command to container")
                 clear_all_cache()

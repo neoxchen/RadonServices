@@ -15,7 +15,7 @@ register_adapter(np.int64, lambda int64: AsIs(int64))
 pool = ThreadedConnectionPool(
     minconn=1,
     maxconn=10,
-    host="localhost",  # TODO: change to Docker container name
+    host="postgres",  # TODO: change to Docker container name
     user="radon",
     password="radon2023",
     port="5432",

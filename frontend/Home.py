@@ -5,11 +5,9 @@ from psycopg2 import sql
 
 from sql_util import postgres
 
-st.title("Radon Controller")
-
 
 @st.cache_data
-def fetch_status_data(token):
+def fetch_status_data():
     with postgres() as cursor:
         cursor.execute(sql.SQL("SELECT status, COUNT(*) FROM galaxies GROUP BY status"))
         results = cursor.fetchall()
@@ -18,18 +16,6 @@ def fetch_status_data(token):
         return results
 
 
-st.subheader("Galaxy status:")
-status_data = fetch_status_data("token")
-st.table({a[0]: a[1] for a in status_data})
-with st.expander("Plot"):
-    fig, ax = plt.subplots()
-    ax.bar([a[0] for a in status_data], [a[1] for a in status_data])
-    st.pyplot(fig)
-
-
-########################
-# Data Preview Section #
-########################
 @st.cache_data
 def fetch_galaxy_data(preview_galaxy_id):
     if not preview_galaxy_id:
@@ -64,6 +50,27 @@ def fetch_galaxy_rotation_data(preview_galaxy_id):
         return results[0]
 
 
+def clear_all_cache():
+    fetch_status_data.clear()
+    fetch_galaxy_data.clear()
+    fetch_galaxy_rotation_data.clear()
+
+
+st.title("Radon Controller")
+with st.sidebar:
+    st.button(label="Clear Cache & Refresh", on_click=clear_all_cache)
+
+st.subheader("Galaxy dataset status:")
+status_data = fetch_status_data()
+st.table({a[0]: a[1] for a in status_data})
+with st.expander("Plot"):
+    fig, ax = plt.subplots()
+    ax.bar([a[0] for a in status_data], [a[1] for a in status_data])
+    st.pyplot(fig)
+
+########################
+# Data Preview Section #
+########################
 st.subheader("Galaxy Data Preview")
 galaxy_id = st.text_input("Enter galaxy UID or source ID:", placeholder="e.g. 5937148114675443200")
 st.session_state.preview_galaxy_id = galaxy_id

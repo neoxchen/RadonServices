@@ -80,7 +80,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
                 mounts=mounts,
                 network=network,
                 detach=True,
-                auto_remove=True
+                # auto_remove=True
             )
 
             # Successful boot! save container info

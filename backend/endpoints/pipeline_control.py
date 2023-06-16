@@ -1,3 +1,5 @@
+import traceback
+
 import requests
 from docker.types import Mount
 from flask import make_response, request
@@ -5,7 +7,7 @@ from flask_restful import Resource
 
 import utils.log_util as log
 from endpoints.wrappers import safe_request
-from shared_states import PIPELINE_CONTAINERS, get_container_by_id
+from shared_states import PIPELINE_CONTAINERS, get_container_by_id, get_container_address
 from utils.docker_interface import boot_container_until_success
 
 
@@ -27,10 +29,13 @@ class PipelineEndpoint(Resource):
             for pipeline_type, containers in PIPELINE_CONTAINERS.items():
                 pipeline_json[pipeline_type] = []
                 for container in containers:
+                    hostname = container.container.attrs["Config"]["Hostname"]
                     pipeline_json[pipeline_type].append({
                         "id": container.container_id,
+                        "name": container.container.name,
+                        "hostname": hostname,
                         "port": container.port,
-                        "status": container.container.status
+                        "status": container.container.attrs["State"]["Status"]
                     })
             return make_response({"message": "OK", "pipelines": pipeline_json}, 200)
 
@@ -46,10 +51,13 @@ class PipelineEndpoint(Resource):
         # Get the list of containers of the corresponding pipeline type
         containers = []
         for container in PIPELINE_CONTAINERS[f"pipeline-{pipeline_type}"]:
+            hostname = container.container.attrs["Config"]["Hostname"]
             containers.append({
                 "id": container.container_id,
+                "name": container.container.name,
+                "hostname": hostname,
                 "port": container.port,
-                "status": container.container.status
+                "status": container.container.attrs["State"]["Status"]
             })
 
         return make_response({"message": "OK", "containers": containers}, 200)
@@ -108,11 +116,14 @@ class PipelineEndpoint(Resource):
         if container is None:
             return make_response({"error": f"Container with ID {container_id} does not exist!"}, 404)
 
-        url = f"http://localhost:{container.port}/control"
-
+        container_url = f"{get_container_address(container_id)}/control"
         try:
-            response = requests.post(url, json={"action": "stop"})
+            log.request(uid, f"Sending stop request to '{container_url}'...")
+            requests.post(container_url, json={"action": "stop"})
         except requests.exceptions.ConnectionError:
-            return make_response({"error": f"Container with ID {container_id} is not running!"}, 404)
+            return make_response({
+                "error": f"Container with ID {container_id} is not running!",
+                "details": traceback.format_exc()
+            }, 404)
 
-        return response
+        return make_response({"message": "OK"}, 200)

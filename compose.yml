@@ -42,6 +42,8 @@ services:
       - /home/neo/data/fits:/fits-data
     ports:
       - "5450:8501"
+    depends_on:
+      - postgres
     networks:
       - radon_network
 
