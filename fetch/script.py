@@ -4,7 +4,6 @@ from time import sleep
 import requests
 from psycopg2 import extensions
 from psycopg2 import sql
-from requests.exceptions import Timeout
 from tqdm import tqdm
 
 from parallel_util import run_in_parallel
@@ -81,8 +80,8 @@ def fetch(url: str, fits_path: str) -> bool:
         # Return successful
         # print("Successfully fetched!")
         return True
-    except (ConnectionError, Timeout):
-        # print("Request timed out!")
+    except:
+        # print("Exception occurred while fetching!")
         return False
 
 
@@ -129,7 +128,7 @@ def run_script():
 
             # Update database
             values_str = ",".join(
-                cursor.mogrify("(%s, %s, %s)", (id, status, failed_attempts)).decode("utf-8") for id, (status, failed_attempts) in processed_results.items())
+                cursor.mogrify("(%s, %s, %s)", (gid, status, failed_attempts)).decode("utf-8") for gid, (status, failed_attempts) in processed_results.items())
             cursor.execute(f"""
                 UPDATE galaxies
                 SET status = data.status,
@@ -152,7 +151,8 @@ def run_script():
             "fails": fails
         })
 
-        print(f"Iteration #{iteration} ended with {len(successes)} successes and {len(fails)} fails (total: {len(galaxy_ids)})!")
+        print(
+            f"Iteration #{iteration} ended with {len(successes)} successes and {len(fails)} fails (total: {len(galaxy_ids)})!")
         iteration += 1
 
     # Signal pipeline shutdown
