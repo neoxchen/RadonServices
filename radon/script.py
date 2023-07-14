@@ -1,16 +1,22 @@
 import os
 from time import sleep
+from typing import Tuple, List
 
 import numpy as np
 import requests
 import scipy
 from astropy.io import fits
 from psycopg2 import extensions
+from scipy.optimize import curve_fit
 from tqdm import tqdm
 
+from models import SineApproximation, NormalDistribution, RadonBandResult, RadonGalaxyResult
 from sql_util import postgres
 
 # Fetch environment variables or use defaults
+CONTAINER_ID = os.getenv("CONTAINER_ID")
+print(f"Configured environment variable CONTAINER_ID as '{CONTAINER_ID}'")
+
 DATA_PATH = os.getenv("DATA_PATH", "/fits-data")
 print(f"Configured environment variable DATA_PATH as '{DATA_PATH}'")
 
@@ -28,6 +34,17 @@ CENTER = [dim // 2 for dim in SHAPE]
 RADIUS = SHAPE[0] // 2
 Y_COORDS, X_COORDS = np.ogrid[-CENTER[0]:SHAPE[0] - CENTER[0], -CENTER[1]:SHAPE[1] - CENTER[1]]
 MASK = X_COORDS * X_COORDS + Y_COORDS * Y_COORDS <= RADIUS * RADIUS
+
+# Normal distribution fitting variables
+DISTRIBUTION_WINDOWS = [15, 30, 60, 90]
+
+# Dynamic flag to stop the script
+stop_script = False
+
+
+def set_stop_script():
+    global stop_script
+    stop_script = True
 
 
 def radon_transform(image: np.ndarray) -> np.ndarray:
@@ -51,7 +68,44 @@ def radon_transform(image: np.ndarray) -> np.ndarray:
     return sinogram
 
 
-def process(metadata_entry):
+def filter_mean(x, threshold):
+    index = int((1 - threshold) * x.shape[0])
+    return np.mean(np.sort(x, axis=0)[index:], axis=0)
+
+
+def filter_sinogram(sinogram):
+    """ Returns a dictionary of filtered sinograms, with the key being the filter level """
+    return {
+        0: np.max(sinogram, axis=0),
+        0.05: filter_mean(sinogram, 0.05),
+        0.1: filter_mean(sinogram, 0.1),
+        0.2: filter_mean(sinogram, 0.2),
+        0.3: filter_mean(sinogram, 0.3)
+    }
+
+
+def expand_data(sinogram_1d: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """ Expands 1D sinogram data from [0, 180] to [-180, 180 * 2] degrees (wraps) """
+    extended_data = np.concatenate((sinogram_1d[:-1], sinogram_1d, sinogram_1d[1:]))
+    n = len(sinogram_1d)
+    return np.arange(-(n - 1), (n - 1) * 2 + 1), extended_data
+
+
+def sine_function(x, a, b, c, d):
+    return a * np.sin(b * x + c) + d
+
+
+def fit_sine(xs, ys):
+    ff = np.fft.fftfreq(len(xs), (xs[1] - xs[0]))  # assume uniform spacing
+    Fyy = abs(np.fft.fft(ys))
+    guess_freq = abs(ff[np.argmax(Fyy[1:]) + 1])  # excluding the zero frequency "peak", which is related to offset
+    guess_amp = np.std(ys) * 2.0 ** 0.5
+    guess_offset = np.mean(ys)
+    guess = np.array([guess_amp, 2.0 * np.pi * guess_freq, 0.0, guess_offset])
+    return curve_fit(sine_function, xs, ys, p0=guess)
+
+
+def process(metadata_entry) -> RadonGalaxyResult:
     source_id, bin_id = metadata_entry
 
     # Fetch FITS file from disk
@@ -60,8 +114,8 @@ def process(metadata_entry):
         data = hdu_list[0].data
         hdu_list.close()
 
-    # Apply radon transform to get max rotations
-    rotations = [None, None, None, None]
+    # Apply radon transform to get max rotations for each band
+    band_results: List[RadonBandResult] = []
     for i, band in enumerate("griz"):
         # Check if there is any data in this channel
         if not data[i].any():
@@ -69,18 +123,79 @@ def process(metadata_entry):
 
         # Perform radon transform
         sinogram = radon_transform(data[i] * MASK)
+        xs = range(sinogram.shape[1])
 
-        # Update rotation array
-        rotation = np.unravel_index(sinogram.argmax(), sinogram.shape)[1]
-        rotations[i] = rotation
+        # Compute rotations & errors
+        offset, rotation = np.unravel_index(sinogram.argmax(), sinogram.shape)
 
-    # Return processed rotations
-    return [source_id, *rotations]
+        # Apply filters to sinogram
+        filtered_sinogram_map = filter_sinogram(sinogram)
+
+        # Calculate sine approximation at each filter level
+        sine_approximations: List[SineApproximation] = []
+        for level, sinogram_1d in filtered_sinogram_map.items():
+            expanded_xs, expanded_ys = expand_data(sinogram_1d)
+            popt, _ = fit_sine(expanded_xs, expanded_ys)
+            sin_ys = sine_function(xs, *popt)
+            rmse = np.sqrt(np.mean((sinogram_1d - sin_ys) ** 2))
+            sine_approximations.append(SineApproximation(level, *popt, rmse))
+
+        # Fit a normal distribution to each window
+        normal_distributions: List[NormalDistribution] = []
+        expanded_xs, expanded_ys = expand_data(filtered_sinogram_map[0])  # 0 = max filter
+        for window in DISTRIBUTION_WINDOWS:
+            # Mask the data to only include the window
+            peak_mask = (expanded_xs >= rotation - window) & (expanded_xs <= rotation + window)
+            xs_near_peak, ys_near_peak = expanded_xs[peak_mask], expanded_ys[peak_mask]
+
+            # Normalize the intensity
+            ys_near_peak_normalized = ys_near_peak / np.sum(ys_near_peak)
+
+            # Calculated weighted mean and standard deviation
+            mean = np.average(xs_near_peak, weights=ys_near_peak_normalized)
+            std = np.sqrt(np.average((xs_near_peak - mean) ** 2, weights=ys_near_peak_normalized))
+
+            # Store the result
+            normal_distributions.append(NormalDistribution(window, mean, std))
+
+        band_results.append(RadonBandResult(band, rotation, sine_approximations, normal_distributions))
+
+    return RadonGalaxyResult(source_id, bin_id, band_results)
+
+
+def insert_result(cursor: extensions.cursor, result: RadonGalaxyResult) -> None:
+    # Assuming cursor is managed with a with statement
+    for band_result in result.band_results:
+        # Insert into bands and get band id
+        cursor.execute(
+            "INSERT INTO bands (source_id, band, degree) VALUES (%s, %s, %s) RETURNING id",
+            (result.source_id, band_result.band_name, band_result.degree)
+        )
+        band_id = cursor.fetchone()[0]
+
+        # Insert into sine_approximations
+        for sine_approximation in band_result.sine_approximations:
+            cursor.execute(
+                "INSERT INTO sine_approximations (band_id, level, a, b, c, d, rmse) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (band_id, sine_approximation.level, sine_approximation.a, sine_approximation.b, sine_approximation.c, sine_approximation.d,
+                 sine_approximation.rmse)
+            )
+
+        # Insert into normal_distributions
+        for normal_distribution in band_result.normal_distributions:
+            cursor.execute(
+                "INSERT INTO normal_distributions (band_id, window_size, mean, std_dev) VALUES (%s, %s, %s, %s)",
+                (band_id, normal_distribution.window, normal_distribution.mean, normal_distribution.std_dev)
+            )
 
 
 def run_script():
+    print("Starting radon pipeline script...")
     iteration = 1
-    while True:
+    while not stop_script:
+        # Minor sleep
+        sleep(2)
+
         print(f"Processing batch #{iteration}...")
         with postgres() as cursor:
             cursor: extensions.cursor
@@ -98,31 +213,32 @@ def run_script():
                 break
 
             # Loop through every fetched galaxies
-            result_rows = []
+            result_rows: List[RadonGalaxyResult] = []
             for entry in tqdm(metadata):
                 result_rows.append(process(entry))
 
             # Insert into the database tables
-            # 1. fits_data table
-            value_str = ",".join(cursor.mogrify("(%s,%s,%s,%s,%s)", row).decode("utf-8") for row in result_rows)
-            cursor.execute(f"""
-                INSERT INTO fits_data (source_id, rotation_g, rotation_r, rotation_i, rotation_z)
-                VALUES {value_str};
-            """)
+            # 1. insert into the various results tables
+            for result in result_rows:
+                insert_result(cursor, result)
 
             # 2. update 'galaxies' table's status
             cursor.execute("""
                 UPDATE galaxies
                 SET status = 'Transformed'
                 WHERE source_id IN %s;
-            """, (tuple(a[0] for a in result_rows),))
+            """, (tuple(result_entry.source_id for result_entry in result_rows),))
 
         # Call API to update status
-        requests.post("http://backend:5000/pipeline/status/radon", json={
+        print(f"Updating pipeline status for iteration #{iteration}...")
+        requests.post(f"http://backend:5000/pipelines/status/{CONTAINER_ID}", json={
             "iteration": iteration,
-            "galaxies": [a[0] for a in result_rows]
+            "galaxies": [result_entry.source_id for result_entry in result_rows]
         })
 
-        # Minor sleep
-        sleep(1)
+        print(f"Iteration #{iteration} ended with {len(result_rows)} galaxies processed")
         iteration += 1
+
+    # Signal pipeline shutdown
+    requests.delete(f"http://backend:5000/pipelines/status/{CONTAINER_ID}")
+    print("Radon pipeline script execution complete!")
