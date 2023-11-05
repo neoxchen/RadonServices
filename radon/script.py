@@ -8,7 +8,6 @@ import scipy
 from astropy.io import fits
 from psycopg2 import extensions
 from scipy.optimize import curve_fit
-from tqdm import tqdm
 
 from models import SineApproximation, NormalDistribution, RadonBandResult, RadonGalaxyResult
 from sql_util import postgres
@@ -22,6 +21,9 @@ print(f"Configured environment variable DATA_PATH as '{DATA_PATH}'")
 
 SQL_BATCH_SIZE = int(os.getenv("SQL_BATCH_SIZE", 200))
 print(f"Configured environment variable SQL_BATCH_SIZE as {SQL_BATCH_SIZE}")
+
+# We ignore the band data if all values are below this threshold
+IGNORE_THRESHOLD = 0.00001
 
 # Radon variables
 THETAS = np.linspace(0, np.pi, 181)
@@ -107,6 +109,7 @@ def fit_sine(xs, ys):
 
 def process(metadata_entry) -> RadonGalaxyResult:
     source_id, bin_id = metadata_entry
+    print(f"Processing galaxy b{bin_id}/{source_id}...")
 
     # Fetch FITS file from disk
     fits_path = f"{DATA_PATH}/b{bin_id}/{source_id}.fits"
@@ -117,13 +120,25 @@ def process(metadata_entry) -> RadonGalaxyResult:
     # Apply radon transform to get max rotations for each band
     band_results: List[RadonBandResult] = []
     for i, band in enumerate("griz"):
-        # Check if there is any data in this channel
+        print(f"Processing band {band}...")
+
+        # Check if there is any data (threshold) in this channel
+        # - or if there are any NadNs, we want to ignore NaNs because it can propagate to the sinogram
         if not data[i].any():
+            print("WARNING: No band data exists, skipping")
+            continue
+        elif np.any(np.isnan(data[i])):
+            print("WARNING: Band data contains NaNs, skipping")
             continue
 
         # Perform radon transform
         sinogram = radon_transform(data[i] * MASK)
-        xs = range(sinogram.shape[1])
+        if not sinogram.any():
+            print("WARNING: No sinogram data exists, skipping")
+            continue
+        elif np.any(np.isnan(sinogram)):
+            print("WARNING: Sinogram data contains NaNs, skipping")
+            continue
 
         # Compute rotations & errors
         offset, rotation = np.unravel_index(sinogram.argmax(), sinogram.shape)
@@ -132,13 +147,17 @@ def process(metadata_entry) -> RadonGalaxyResult:
         filtered_sinogram_map = filter_sinogram(sinogram)
 
         # Calculate sine approximation at each filter level
+        xs = range(sinogram.shape[1])
         sine_approximations: List[SineApproximation] = []
         for level, sinogram_1d in filtered_sinogram_map.items():
-            expanded_xs, expanded_ys = expand_data(sinogram_1d)
-            popt, _ = fit_sine(expanded_xs, expanded_ys)
-            sin_ys = sine_function(xs, *popt)
-            rmse = np.sqrt(np.mean((sinogram_1d - sin_ys) ** 2))
-            sine_approximations.append(SineApproximation(level, *popt, rmse))
+            try:
+                expanded_xs, expanded_ys = expand_data(sinogram_1d)
+                popt, _ = fit_sine(expanded_xs, expanded_ys)
+                sin_ys = sine_function(xs, *popt)
+                rmse = np.sqrt(np.mean((sinogram_1d - sin_ys) ** 2))
+                sine_approximations.append(SineApproximation(level, *popt, rmse))
+            except:
+                print(f"WARNING: Failed to fit sine approximation for level {level}, skipping")
 
         # Fit a normal distribution to each window
         normal_distributions: List[NormalDistribution] = []
@@ -155,8 +174,12 @@ def process(metadata_entry) -> RadonGalaxyResult:
             mean = np.average(xs_near_peak, weights=ys_near_peak_normalized)
             std = np.sqrt(np.average((xs_near_peak - mean) ** 2, weights=ys_near_peak_normalized))
 
-            # Store the result
-            normal_distributions.append(NormalDistribution(window, mean, std))
+            # Check NaNs
+            if np.isnan(mean) or np.isnan(std):
+                print(f"WARNING: Normal distribution mean or std is NaN, skipping window {window}")
+            else:
+                # Append to list
+                normal_distributions.append(NormalDistribution(window, mean, std))
 
         band_results.append(RadonBandResult(band, rotation, sine_approximations, normal_distributions))
 
@@ -214,26 +237,45 @@ def run_script():
 
             # Loop through every fetched galaxies
             result_rows: List[RadonGalaxyResult] = []
-            for entry in tqdm(metadata):
-                result_rows.append(process(entry))
+            for galaxy_entry in metadata:
+                try:
+                    galaxy_result = process(galaxy_entry)
+                except:
+                    print(f"ERROR: Failed to process galaxy b{galaxy_entry[1]}/{galaxy_entry[0]}")
+                    galaxy_result = RadonGalaxyResult(galaxy_entry[0], galaxy_entry[1], [], is_error=True)
+                result_rows.append(galaxy_result)
 
             # Insert into the database tables
             # 1. insert into the various results tables
             for result in result_rows:
-                insert_result(cursor, result)
+                if not result.is_error:
+                    insert_result(cursor, result)
 
             # 2. update 'galaxies' table's status
-            cursor.execute("""
-                UPDATE galaxies
-                SET status = 'Transformed'
-                WHERE source_id IN %s;
-            """, (tuple(result_entry.source_id for result_entry in result_rows),))
+            # Update transformed galaxies
+            transformed_galaxies = tuple(result_entry.source_id for result_entry in result_rows if not result_entry.is_error)
+            if transformed_galaxies:
+                cursor.execute("""
+                    UPDATE galaxies
+                    SET status = 'Transformed'
+                    WHERE source_id IN %s;
+                """, (transformed_galaxies,))
+
+            # Update error galaxies
+            error_galaxies = tuple(result_entry.source_id for result_entry in result_rows if result_entry.is_error)
+            if error_galaxies:
+                cursor.execute("""
+                    UPDATE galaxies
+                    SET status = 'Error'
+                    WHERE source_id IN %s;
+                """, (error_galaxies,))
 
         # Call API to update status
         print(f"Updating pipeline status for iteration #{iteration}...")
         requests.post(f"http://backend:5000/pipelines/status/{CONTAINER_ID}", json={
             "iteration": iteration,
-            "galaxies": [result_entry.source_id for result_entry in result_rows]
+            "galaxies": [result_entry.source_id for result_entry in result_rows if not result_entry.is_error],
+            "errors": [result_entry.source_id for result_entry in result_rows if result_entry.is_error]
         })
 
         print(f"Iteration #{iteration} ended with {len(result_rows)} galaxies processed")

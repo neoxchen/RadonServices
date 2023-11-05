@@ -36,10 +36,13 @@ class RadonBandResult:
 
 
 class RadonGalaxyResult:
-    def __init__(self, source_id: str, bin_id: int, band_results: List[RadonBandResult]):
+    def __init__(self, source_id: str, bin_id: int, band_results: List[RadonBandResult], is_error=False):
         self.source_id = source_id
         self.bin_id = bin_id
         self.band_results = band_results
+        self.is_error = is_error
 
     def __repr__(self):
+        if self.is_error:
+            return f"RadonGalaxyResult(source_id={self.source_id}, bin_id={self.bin_id}, is_error={self.is_error})"
         return f"RadonGalaxyResult(source_id={self.source_id}, bin_id={self.bin_id}, band_results={self.band_results})"

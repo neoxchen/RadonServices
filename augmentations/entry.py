@@ -6,7 +6,7 @@ from typing import Optional
 from flask import Flask, make_response, request
 from werkzeug.serving import make_server
 
-from script import run_script, set_stop_fetch
+from script import run_script, set_stop_script
 
 # Fetch port to use (must be present)
 PORT = int(os.getenv("PORT"))
@@ -43,7 +43,7 @@ def start_server():
         if action != "stop":
             return make_response({"error": "Invalid action"}, 400)
 
-        set_stop_fetch()
+        set_stop_script()
         Thread(target=stop_server).start()
         return make_response({"message": "Successfully stopped the pipeline"}, 200)
 
@@ -62,8 +62,9 @@ def stop_server():
 
 
 if __name__ == "__main__":
+    print("Starting augmentation pipeline...")
     # Start fetch script automatically
-    script_thread = Thread(target=run_script, daemon=True)
+    script_thread = Thread(target=run_script, daemon=False)
     script_thread.start()
 
     # Start flask server

@@ -12,10 +12,12 @@ CREATE TABLE galaxies
 
 CREATE TABLE bands
 (
-    id        SERIAL PRIMARY KEY NOT NULL,
-    source_id VARCHAR REFERENCES galaxies (source_id),
-    band      CHAR               NOT NULL,
-    degree    INT CHECK (degree >= 0 AND degree <= 180),
+    id            SERIAL PRIMARY KEY NOT NULL,
+    source_id     VARCHAR REFERENCES galaxies (source_id),
+    band          CHAR               NOT NULL,
+    degree        INT CHECK (degree >= 0 AND degree <= 180),
+    total_error   FLOAT DEFAULT 0,
+    running_count INT   DEFAULT 0,
     UNIQUE (source_id, band)
 );
 
@@ -34,10 +36,10 @@ CREATE TABLE sine_approximations
 
 CREATE TABLE normal_distributions
 (
-    id      SERIAL PRIMARY KEY NOT NULL,
-    band_id INT REFERENCES bands (id),
-    window_size  SMALLINT           NOT NULL,
-    mean    FLOAT              NOT NULL,
-    std_dev FLOAT              NOT NULL,
+    id          SERIAL PRIMARY KEY NOT NULL,
+    band_id     INT REFERENCES bands (id),
+    window_size SMALLINT           NOT NULL,
+    mean        FLOAT              NOT NULL,
+    std_dev     FLOAT              NOT NULL,
     UNIQUE (band_id, window_size)
 );
