@@ -1,0 +1,5 @@
+[browser]
+serverAddress = "clotho.ics.uci.edu/galaxyradon"
+serverPort = 8080
+gatherUsageStats = false
+

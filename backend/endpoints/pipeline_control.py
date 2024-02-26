@@ -10,6 +10,8 @@ from endpoints.wrappers import safe_request
 from shared_states import PIPELINE_CONTAINERS, get_container_by_id, get_container_address
 from utils.docker_interface import boot_container_until_success
 
+VALID_PIPELINE_TYPES = ["fetch", "radon", "augment"]
+
 
 class PipelineEndpoint(Resource):
     path = "/pipelines/<pipeline_type>"
@@ -68,12 +70,11 @@ class PipelineEndpoint(Resource):
         Creates a new pipeline of the corresponding pipeline type
         """
         # Check if pipeline type is valid
-        valid_pipeline_types = ["fetch", "radon"]
         pipeline_type = pipeline_type.lower()
-        if pipeline_type not in valid_pipeline_types:
+        if pipeline_type not in VALID_PIPELINE_TYPES:
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
-                "valid_types": valid_pipeline_types
+                "valid_types": VALID_PIPELINE_TYPES
             }, 400)
 
         # Dynamically spin up the corresponding pipeline
@@ -99,12 +100,11 @@ class PipelineEndpoint(Resource):
     def delete(self, pipeline_type, uid):
         """ Deletes the pipeline of the corresponding type """
         # Check if pipeline type is valid
-        valid_pipeline_types = ["fetch", "radon"]
         pipeline_type = pipeline_type.lower()
-        if pipeline_type not in valid_pipeline_types:
+        if pipeline_type not in VALID_PIPELINE_TYPES:
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
-                "valid_types": valid_pipeline_types
+                "valid_types": VALID_PIPELINE_TYPES
             }, 400)
 
         # Dynamically spin up the corresponding pipeline

@@ -15,7 +15,8 @@ from shared_states import DynamicContainer, PIPELINE_CONTAINERS
 # - matches the image tag (e.g. pipeline-radon)
 pipeline_ports = {
     "pipeline-fetch": 6500,
-    "pipeline-radon": 6600
+    "pipeline-radon": 6600,
+    "pipeline-augment": 6700,
 }
 
 # List of used ports

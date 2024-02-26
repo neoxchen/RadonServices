@@ -3,6 +3,8 @@ import streamlit as st
 
 from config import BACKEND_BASE_URL
 
+VALID_PIPELINE_TYPES = ["fetch", "radon", "augment"]
+
 st.set_page_config(
     page_title="Pipeline Status",
 )
@@ -40,7 +42,7 @@ with st.sidebar:
 
 # Pipeline creation
 st.subheader("Create New Pipeline")
-pipeline_type = st.selectbox("Pipeline Type", ["fetch", "radon"])
+pipeline_type = st.selectbox("Pipeline Type", VALID_PIPELINE_TYPES)
 create_pipeline_button = st.button(label="Create Pipeline")
 if create_pipeline_button:
     response = requests.post(f"{BACKEND_BASE_URL}/pipelines/{pipeline_type}")
@@ -78,21 +80,22 @@ for pipeline_type, containers in pipelines.items():
                 if not container_json:
                     st.write("No status available yet")
                 else:
-                    st.write(f"**Iteration:** #{container_json['iteration']}")
-
-                    processed = container_json['galaxies']
-                    st.write(f"**Processed galaxies:** ({len(processed)})")
-                    st.code(', '.join(str(a) for a in processed))
-
-                    successes = container_json['successes']
-                    st.write(f"**Successful galaxies:** ({len(successes)})")
-                    st.code(', '.join(str(a) for a in successes))
-
-                    fails = container_json['fails']
-                    st.write(f"**Failed galaxies:** ({len(fails)})")
-                    st.code(', '.join(str(a) for a in fails))
-
-                    st.write(f"Success rate: {len(successes) / len(processed) * 100:.2f}%")
+                    st.write(container_json)
+                    # st.write(f"**Iteration:** #{container_json['iteration']}")
+                    #
+                    # processed = container_json['galaxies']
+                    # st.write(f"**Processed galaxies:** ({len(processed)})")
+                    # st.code(', '.join(str(a) for a in processed))
+                    #
+                    # successes = container_json['successes']
+                    # st.write(f"**Successful galaxies:** ({len(successes)})")
+                    # st.code(', '.join(str(a) for a in successes))
+                    #
+                    # fails = container_json['fails']
+                    # st.write(f"**Failed galaxies:** ({len(fails)})")
+                    # st.code(', '.join(str(a) for a in fails))
+                    #
+                    # st.write(f"Success rate: {len(successes) / len(processed) * 100:.2f}%")
 
             # Shutdown button
             shutdown_button = st.button(label="Shutdown Container", key=container['id'])

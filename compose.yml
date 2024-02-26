@@ -1,14 +1,20 @@
 version: "3"
+# Port Mapping: (starting at 5450)
+# - 5450: frontend
+# - 5451: reserved for testing -- backend
+# - 5452: reserved for testing -- postgres database
+# - 5453: pgAdmin web interface
+
 services:
   # Metadata database
   postgres:
     image: postgres
+    container_name: postgres
     environment:
       - POSTGRES_USER=radon
       - POSTGRES_PASSWORD=radon2023
-      - POSTGRES_DB=radon_sql
     volumes:
-      # Special volume for Postgres DB
+      # Mounted volume for Postgres DB
       - /home/neo/data/postgres2:/var/lib/postgresql/data
     # TODO: remove this port after testing is complete
     ports:
@@ -16,17 +22,35 @@ services:
     networks:
       - radon_network
 
+  # pgAdmin Database Manager (Web UI)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    user: 0:0 # TODO: use chown instead: https://www.pgadmin.org/docs/pgadmin4/latest/container_deployment.html#mapped-files-and-directories
+    ports:
+      - "5453:80"
+    networks:
+      - radon_network
+    environment:
+      PGADMIN_DEFAULT_EMAIL: radon-user@uci.edu
+      PGADMIN_DEFAULT_PASSWORD: radon-pgadmin4-2023
+      # SCRIPT_NAME: /galaxyradon-pgadmin
+    volumes:
+      # Mounted volume for pgAdmin
+      - /home/neo/data/pgadmin:/var/lib/pgadmin
+
   # Backend controller, also a Flask API
   backend:
+    container_name: backend
     build:
       context: ./backend
       dockerfile: Dockerfile
     volumes:
       # Docker socket so that the backend can dynamically spawn containers
       - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
-    # TODO: remove this port after testing is complete
-    ports:
-      - "5451:5000"
+    # Testing use only!
+    # ports:
+    # - "5451:5000"
     depends_on:
       - postgres
     networks:
@@ -34,6 +58,7 @@ services:
 
   # Frontend container
   frontend:
+    container_name: frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile

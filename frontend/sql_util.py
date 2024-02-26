@@ -19,7 +19,7 @@ pool = ThreadedConnectionPool(
     user="radon",
     password="radon2023",
     port="5432",
-    database="radon_sql"
+    database="radon_sql_v2"
 )
 
 

@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 import numpy as np
 import pandas as pd
 import requests
@@ -18,7 +20,7 @@ if "preview_galaxies_result" not in st.session_state:
 
 # Get recent galaxies
 @st.cache_data
-def get_recent_galaxies():
+def get_recent_galaxies() -> Optional[List[str]]:
     response = requests.get(f"{BACKEND_BASE_URL}/pipelines/all")
     if response.status_code != 200:
         return None
@@ -33,8 +35,7 @@ def get_recent_galaxies():
             container_json = container_status_response.json()["status"]
             if not container_json:
                 continue
-            results += [[str(galaxy_id), "successful"] for galaxy_id in container_json["successes"]]
-            results += [[str(galaxy_id), "failed"] for galaxy_id in container_json["fails"]]
+            results += container_json["galaxies"]
 
     return results
 
@@ -60,10 +61,8 @@ with st.sidebar:
 
 
 def recent_table():
-    results = get_recent_galaxies()
     result_dict = {
-        "Galaxy ID": [galaxy_id for galaxy_id, _ in results],
-        "Status": [status for _, status in results]
+        "Galaxy ID": get_recent_galaxies(),
     }
     df = pd.DataFrame(result_dict)
     df_with_selections = df.copy()
@@ -112,7 +111,7 @@ st.subheader("Generated SQL query:")
 
 where_clauses = []
 if st.session_state.preview_galaxies:
-    id_where = f"(id IN ({', '.join(st.session_state.preview_galaxies)})"
+    id_where = f"(g.id IN ({', '.join(st.session_state.preview_galaxies)})"
 
 
     def formatter(a):
@@ -120,7 +119,7 @@ if st.session_state.preview_galaxies:
         return ", ".join(f"'{a.strip()}'" for a in alist)
 
 
-    id_where += f" OR galaxies.source_id IN ({', '.join(formatter(a) for a in st.session_state.preview_galaxies)}))"
+    id_where += f" OR g.source_id IN ({', '.join(formatter(a) for a in st.session_state.preview_galaxies)}))"
     where_clauses.append(id_where)
 if use_ra:
     where_clauses.append(f"ra BETWEEN {ra_min} AND {ra_max}")
@@ -129,15 +128,24 @@ if use_dec:
 
 sql_builder = [
     "SELECT",
-    "    id, galaxies.source_id, ra, dec, gal_prob, bin, status,",
-    "    rotation_g, rotation_r, rotation_i, rotation_z",
-    "FROM galaxies",
-    "LEFT JOIN fits_data ON galaxies.source_id=fits_data.source_id"
+    "    g.*,",
+    "    MAX(CASE WHEN b.band = 'g' THEN b.degree END) AS rot_g,",
+    "    MAX(CASE WHEN b.band = 'r' THEN b.degree END) AS rot_r,",
+    "    MAX(CASE WHEN b.band = 'i' THEN b.degree END) AS rot_i,",
+    "    MAX(CASE WHEN b.band = 'z' THEN b.degree END) AS rot_z",
+    "FROM galaxies g",
+    "LEFT JOIN bands b ON g.source_id = b.source_id",
 ]
+
 if where_clauses:
     sep = f"\n  AND "
     sql_builder.append(f"WHERE {sep.join(where_clauses)}")
-sql_builder.append(f"LIMIT {limit}")
+
+# Add suffixes
+sql_builder += [
+    "GROUP BY g.id",
+    f"LIMIT {limit}"
+]
 
 st.code("\n".join(sql_builder))
 
@@ -150,7 +158,7 @@ if not st.session_state.preview_galaxies_result:
 else:
     st.subheader("Query Result")
     preview_result_df = pd.DataFrame(st.session_state.preview_galaxies_result,
-                                     columns=["id", "source_id", "ra", "dec", "gal_prob", "bin", "status",
+                                     columns=["id", "source_id", "ra", "dec", "gal_prob", "bin", "status", "fails",
                                               "rot_g", "rot_r", "rot_i", "rot_z"])
     preview_result_df["ra"] = preview_result_df["ra"].astype(float)
     preview_result_df["dec"] = preview_result_df["dec"].astype(float)
@@ -179,7 +187,7 @@ else:
         st.write(f"**FITS path:** {actual_fits_path}")
 
         # If status is fetched, display FITS image without rotation
-        if row["status"] != "Fetched" and row["status"] != "Transformed":
+        if row["status"] != "Fetched" and row["status"] != "Transformed" and row["status"] != "Error":
             st.write("*FITS data has not been fetched for this galaxy*")
         else:
             # Container path is different because of mounted volume

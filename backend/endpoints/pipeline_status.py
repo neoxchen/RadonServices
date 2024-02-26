@@ -23,22 +23,7 @@ class PipelineStatusEndpoint(Resource):
     @safe_request
     def post(self, container_id, uid):
         """ Updates the status of the current pipeline """
-        # Example request body:
-        # {
-        #     "iteration": 123,
-        #     "galaxies": ["123"],
-        #     "successes": ["123"],
-        #     "fails": ["123"]
-        # }
-
-        body = request.get_json()
-        CONTAINER_STATUS[container_id] = {
-            "iteration": body["iteration"],
-            "galaxies": body["galaxies"],
-            "successes": body["successes"],
-            "fails": body["fails"]
-        }
-
+        CONTAINER_STATUS[container_id] = request.get_json()
         return make_response({"message": "OK"}, 200)
 
     @safe_request
