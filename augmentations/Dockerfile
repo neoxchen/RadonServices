@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Invoke entrypoint script
-CMD ["python", "entry.py"]
+CMD ["python", "-u", "src/entry.py"]

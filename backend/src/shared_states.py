@@ -8,15 +8,13 @@ from docker.models.containers import Container
 # Docker Container States #
 ###########################
 class DynamicContainer:
-    def __init__(self, container: Container, container_id: str,
-                 pipeline_type: str, port: int):
-        self.container = container
-        self.container_id = container_id
+    def __init__(self, container: Container, container_id: str, pipeline_type: str, port: int):
+        self.container: Container = container
+        self.container_id: str = container_id
+        self.pipeline_type: str = pipeline_type
+        self.port: int = port
 
-        self.pipeline_type = pipeline_type
-        self.port = port
-
-    def __str__(self):
+    def __str__(self) -> str:
         return f"DynamicContainer({self.container_id}, {self.pipeline_type}, {self.port})"
 
 
@@ -42,10 +40,11 @@ def get_container_by_id(container_id: str) -> Optional[DynamicContainer]:
 
 def get_container_address(container_id: str):
     """ Returns the address of the container with the given ID """
-    container = get_container_by_id(container_id)
+    container: Optional[DynamicContainer] = get_container_by_id(container_id)
     if container is None:
         return None
-    ip = container.container.attrs['Config']['Hostname']
+
+    ip: str = container.container.attrs['Config']['Hostname']
     return f"http://{ip}:{container.port}"
 
 

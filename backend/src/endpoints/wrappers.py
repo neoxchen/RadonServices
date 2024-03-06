@@ -3,7 +3,7 @@ import uuid
 from functools import wraps
 from time import time
 
-import utils.log_util as log
+import commons.utils.log_util as log
 from flask import request
 
 

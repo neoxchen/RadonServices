@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../RadonServices/.idea/RadonServices.iml" filepath="$PROJECT_DIR$/../RadonServices/.idea/RadonServices.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/RadonServices.iml" filepath="$PROJECT_DIR$/.idea/RadonServices.iml" />
     </modules>
   </component>
 </project>

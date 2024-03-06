@@ -6,21 +6,8 @@ from psycopg2 import extensions
 from psycopg2 import sql
 from tqdm import tqdm
 
-from parallel_util import run_in_parallel
-from sql_util import postgres
-
-# Fetch environment variables or use defaults
-CONTAINER_ID = os.getenv("CONTAINER_ID")
-print(f"Configured environment variable CONTAINER_ID as '{CONTAINER_ID}'")
-
-DATA_PATH = os.getenv("DATA_PATH", "/fits-data")
-print(f"Configured environment variable DATA_PATH as '{DATA_PATH}'")
-
-MAX_FAILS = int(os.getenv("MAX_FAILS", 1))
-print(f"Configured environment variable MAX_FAILS as {MAX_FAILS}")
-
-SQL_BATCH_SIZE = int(os.getenv("SQL_BATCH_SIZE", 200))
-print(f"Configured environment variable SQL_BATCH_SIZE as {SQL_BATCH_SIZE}")
+from commons.utils.parallel_utils import run_in_parallel
+from constants import CONTAINER_ID, MAX_FAILS, SQL_BATCH_SIZE
 
 # Dynamic flag to stop the script
 stop_fetch = False

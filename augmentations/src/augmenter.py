@@ -18,6 +18,8 @@ def _augment_rotate(fits: np.ndarray, angle: int) -> Tuple[np.ndarray, int]:
 
 def _augment_resample(fits: np.ndarray, sample_count: int, brightness_modifier=30) -> Tuple[np.ndarray, int]:
     assert np.all(fits >= 0), "Fits data must be non-negative"
+    # fits = np.clip(fits, 0, 100)
+
     # Scale brightness
     fits = brightness_modifier * fits
 

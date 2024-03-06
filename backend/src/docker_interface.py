@@ -7,8 +7,8 @@ import docker
 from docker.errors import APIError
 from docker.types import Mount
 
-import utils.log_util as log
-from shared_states import DynamicContainer, PIPELINE_CONTAINERS
+import commons.utils.log_util as log
+from src.shared_states import DynamicContainer, PIPELINE_CONTAINERS
 
 # Starting port for each type of containers
 # - this will be incremented for each container booted

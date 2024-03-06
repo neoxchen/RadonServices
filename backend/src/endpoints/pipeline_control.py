@@ -1,33 +1,33 @@
 import traceback
+from typing import Any, Dict, List
 
 import requests
 from docker.types import Mount
 from flask import make_response, request
-from flask_restful import Resource
+from flask_restful import Api, Resource
 
-import utils.log_util as log
-from endpoints.wrappers import safe_request
-from shared_states import PIPELINE_CONTAINERS, get_container_by_id, get_container_address
-from utils.docker_interface import boot_container_until_success
-
-VALID_PIPELINE_TYPES = ["fetch", "radon", "augment"]
+import commons.utils.log_util as log
+from commons.constants.pipeline_constants import VALID_PIPELINE_TYPES
+from src.docker_interface import boot_container_until_success
+from src.endpoints.wrappers import safe_request
+from src.shared_states import PIPELINE_CONTAINERS, get_container_by_id, get_container_address
 
 
 class PipelineEndpoint(Resource):
-    path = "/pipelines/<pipeline_type>"
+    path: str = "/pipelines/<pipeline_type>"
 
     @staticmethod
-    def bind_self(api):
+    def bind_self(api: Api):
         api.add_resource(PipelineEndpoint, PipelineEndpoint.path)
 
     @safe_request
-    def get(self, pipeline_type, uid):
+    def get(self, pipeline_type: str, uid: str):
         """
         Gets the status of the active pipelines, allowing for an optional pipeline type
         - if no type is specified, it will retrieve the status of all pipelines
         """
         if pipeline_type == "all":
-            pipeline_json = {}
+            pipeline_json: Dict[str, Any] = {}
             for pipeline_type, containers in PIPELINE_CONTAINERS.items():
                 pipeline_json[pipeline_type] = []
                 for container in containers:
@@ -42,8 +42,8 @@ class PipelineEndpoint(Resource):
             return make_response({"message": "OK", "pipelines": pipeline_json}, 200)
 
         # Check if pipeline type is valid
-        valid_pipeline_types = ["fetch", "radon"]
-        pipeline_type = pipeline_type.lower()
+        valid_pipeline_types: List[str] = ["fetch", "radon"]
+        pipeline_type: str = pipeline_type.lower()
         if pipeline_type not in valid_pipeline_types:
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
@@ -51,10 +51,10 @@ class PipelineEndpoint(Resource):
             }, 400)
 
         # Get the list of containers of the corresponding pipeline type
-        containers = []
+        container_metadata: List[Dict[str, Any]] = []
         for container in PIPELINE_CONTAINERS[f"pipeline-{pipeline_type}"]:
-            hostname = container.container.attrs["Config"]["Hostname"]
-            containers.append({
+            hostname: str = container.container.attrs["Config"]["Hostname"]
+            container_metadata.append({
                 "id": container.container_id,
                 "name": container.container.name,
                 "hostname": hostname,
@@ -62,7 +62,7 @@ class PipelineEndpoint(Resource):
                 "status": container.container.attrs["State"]["Status"]
             })
 
-        return make_response({"message": "OK", "containers": containers}, 200)
+        return make_response({"message": "OK", "containers": container_metadata}, 200)
 
     @safe_request
     def post(self, pipeline_type, uid):
@@ -80,7 +80,7 @@ class PipelineEndpoint(Resource):
         # Dynamically spin up the corresponding pipeline
         log.request(uid, f"Spinning up a new '{pipeline_type}' pipeline...")
 
-        fits_volume = Mount(target="/fits-data", source="/home/neo/data/fits", type="bind")
+        fits_volume: Mount = Mount(target="/fits-data", source="/home/neo/data/fits", type="bind")
         new_ports = boot_container_until_success(
             f"pipeline-{pipeline_type}",
             environment={
@@ -97,30 +97,30 @@ class PipelineEndpoint(Resource):
         }, 200)
 
     @safe_request
-    def delete(self, pipeline_type, uid):
-        """ Deletes the pipeline of the corresponding type """
+    def delete(self, pipeline_type: str, uid: str):
+        """ Gracefully shuts down the pipeline of the corresponding type """
         # Check if pipeline type is valid
-        pipeline_type = pipeline_type.lower()
+        pipeline_type: str = pipeline_type.lower()
         if pipeline_type not in VALID_PIPELINE_TYPES:
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
                 "valid_types": VALID_PIPELINE_TYPES
             }, 400)
 
-        # Dynamically spin up the corresponding pipeline
-        container_id = request.get_json()["container_id"]
-        log.request(uid, f"Terminating the '{pipeline_type}' pipeline with container ID {container_id}...")
+        container_id: str = request.get_json()["container_id"]
 
         # Build URL to send to the pipeline
         container = get_container_by_id(container_id)
         if container is None:
             return make_response({"error": f"Container with ID {container_id} does not exist!"}, 404)
 
-        container_url = f"{get_container_address(container_id)}/control"
+        log.request(uid, f"Terminating the '{pipeline_type}' pipeline with container ID {container_id}...")
+        container_url: str = f"{get_container_address(container_id)}/control"
         try:
             log.request(uid, f"Sending stop request to '{container_url}'...")
             requests.post(container_url, json={"action": "stop"})
-        except requests.exceptions.ConnectionError:
+        except Exception as e:
+            log.error(f"Failed to send stop request to '{container_url}': {e}")
             return make_response({
                 "error": f"Container with ID {container_id} is not running!",
                 "details": traceback.format_exc()

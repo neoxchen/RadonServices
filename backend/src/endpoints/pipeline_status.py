@@ -1,8 +1,8 @@
 from flask import make_response, request
 from flask_restful import Resource
 
-from endpoints.wrappers import safe_request
-from shared_states import CONTAINER_STATUS, get_pipeline_type, PIPELINE_CONTAINERS
+from src.endpoints.wrappers import safe_request
+from src.shared_states import CONTAINER_STATUS, get_pipeline_type, PIPELINE_CONTAINERS
 
 
 class PipelineStatusEndpoint(Resource):
