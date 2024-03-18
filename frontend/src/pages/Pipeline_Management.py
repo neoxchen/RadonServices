@@ -96,7 +96,9 @@ if create_pipeline_button:
     st.session_state.create_pipeline_response = response.json()
     clear_all_cache()
 
-if st.session_state.create_pipeline_response_code != 200:
+if st.session_state.create_pipeline_response_code is None:
+    pass
+elif st.session_state.create_pipeline_response_code != 200:
     st.write(f"Failed to create pipeline: [{st.session_state.create_pipeline_response_code}] {st.session_state.create_pipeline_response['message']}")
 else:
     st.write(f"Created new '{st.session_state.create_pipeline_response['new_pipeline']}' pipeline at port {st.session_state.create_pipeline_response['ports']}")

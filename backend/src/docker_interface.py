@@ -62,7 +62,7 @@ def add_pseudo_container(image_tag: str, container_id: str, port: int):
 
 
 def boot_container_until_success(image_tag: str, count: int = 1, repository: str = "dockerneoc/radon",
-                                 entrypoint: str = "python entry.py",
+                                 entrypoint: str = "python ./src/entry.py",
                                  environment: Optional[Dict[str, any]] = None,
                                  mounts: Optional[List[Mount]] = None,
                                  network: Optional[str] = None,
@@ -95,7 +95,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             # Add extra information to environment variable
             if environment is None:
                 environment = {}
-            environment["PORT"] = new_port
+            environment["CONTAINER_PORT"] = new_port
 
             container_id = str(uuid.uuid4())
             environment["CONTAINER_ID"] = container_id
@@ -107,7 +107,6 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             # Attempts to boot the container at the port
             new_container_object = DOCKER_CLIENT.containers.run(
                 image=f"{repository}:{image_tag}",
-                command=entrypoint,
                 environment=environment,
                 mounts=mounts,
                 network=network,

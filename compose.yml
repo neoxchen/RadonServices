@@ -8,7 +8,7 @@ version: "3"
 services:
   # Metadata database
   postgres:
-    image: postgres
+    image: postgres:15
     container_name: postgres
     environment:
       - POSTGRES_USER=radon

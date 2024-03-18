@@ -70,7 +70,7 @@ class AbstractPipelineShutdownCallback:
 class BackendPipelineShutdownCallback(AbstractPipelineShutdownCallback):
     def execute(self, container_id: str, container_port: int):
         try:
-            requests.delete(f"http://orchestrator:5000/pipelines/status/{self.container_id}")
+            requests.delete(f"http://orchestrator:5000/pipelines/status/{container_id}")
             time.sleep(3)
         except Exception as e:
             print(f"Failed to send pipeline shutdown signal to backend: {e}", file=sys.stderr)
