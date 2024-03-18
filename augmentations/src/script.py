@@ -165,7 +165,7 @@ def run_script():
 
         # Call API to update status
         print(f"Updating pipeline status for iteration #{iteration}...")
-        requests.post(f"http://backend:5000/pipelines/status/{CONTAINER_ID}", json={
+        requests.post(f"http://orchestrator:5000/pipelines/status/{CONTAINER_ID}", json={
             "iteration": iteration,
             "successful": successful,
             "failed": failed
@@ -173,7 +173,7 @@ def run_script():
         iteration += 1
 
     # Signal pipeline shutdown
-    # requests.delete(f"http://backend:5000/pipelines/status/{CONTAINER_ID}")
+    # requests.delete(f"http://orchestrator:5000/pipelines/status/{CONTAINER_ID}")
     print("Angle-error estimation pipeline script execution complete!")
 
 

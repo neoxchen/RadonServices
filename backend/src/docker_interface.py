@@ -34,12 +34,39 @@ is_shutting_down = False
 DOCKER_CLIENT = docker.from_env()
 
 
+def add_pseudo_container(image_tag: str, container_id: str, port: int):
+    """ Adds an already-booted container to the list of containers. Only used in testing """
+    global pipeline_ports, ports, port_container_map
+
+    class FakeContainer:
+        def __init__(self, container_id: str, name: str, hostname: str, port: int, status: str):
+            self.container = self
+
+            self.id = container_id
+            self.name = name
+            self.hostname = hostname
+            self.port = port
+            self.status = status
+            self.attrs = {
+                "Config": {"Hostname": hostname},
+                "State": {"Status": status}
+            }
+
+    fake_container = FakeContainer(container_id, f"fake-{container_id}", "localhost", port, "fake")
+    new_container: DynamicContainer = DynamicContainer(fake_container, container_id, image_tag, port)
+    PIPELINE_CONTAINERS[image_tag].append(new_container)
+
+    # Save port/shutdown info
+    ports.append(port)
+    port_container_map[port] = new_container
+
+
 def boot_container_until_success(image_tag: str, count: int = 1, repository: str = "dockerneoc/radon",
                                  entrypoint: str = "python entry.py",
                                  environment: Optional[Dict[str, any]] = None,
                                  mounts: Optional[List[Mount]] = None,
                                  network: Optional[str] = None,
-                                 max_fails: int = 10):
+                                 max_fails: int = 3):
     """
     Attempts to boot the container until it is successful
     - if not successful, it will increment 'host_port' and try again
@@ -73,6 +100,10 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             container_id = str(uuid.uuid4())
             environment["CONTAINER_ID"] = container_id
 
+            # Pull the image from the repository
+            log.info(f"Pulling '{repository}:{image_tag}' from Docker Hub...")
+            DOCKER_CLIENT.images.pull(repository, image_tag)
+
             # Attempts to boot the container at the port
             new_container_object = DOCKER_CLIENT.containers.run(
                 image=f"{repository}:{image_tag}",
@@ -87,7 +118,6 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
             # Successful boot! save container info
             new_container = DynamicContainer(new_container_object, container_id, image_tag, new_port)
             PIPELINE_CONTAINERS[image_tag].append(new_container)
-            print(PIPELINE_CONTAINERS[image_tag])
 
             # Save port/shutdown info
             ports.append(new_port)
@@ -97,7 +127,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
 
             log.info(f"Successfully loaded '{image_tag}' container at port {new_port}!")
             success += 1
-        except APIError as e:
+        except Exception as e:
             log.error(f"Encountered exception while booting '{image_tag}' container")
             log.error(f"{e}")
             log.error(f"{traceback.format_exc()}")
@@ -106,7 +136,7 @@ def boot_container_until_success(image_tag: str, count: int = 1, repository: str
         pipeline_ports[image_tag] += 1
 
     if fails == max_fails:
-        raise APIError(f"Unable to boot '{image_tag}' containers, failed {max_fails} times!")
+        raise APIError(f"Unable to boot '{image_tag}' container(s), failed {max_fails} times!")
 
     log.info(f"Successfully booted {count} containers for tag '{image_tag}'!")
     return new_ports

@@ -2,7 +2,7 @@ import sys
 import time
 from collections.abc import Callable
 from threading import Thread
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import requests
 from flask import Flask, make_response, request
@@ -27,7 +27,7 @@ class AbstractScript:
 
         while not self._should_stop:
             self.run_batch()
-            self.update_status()
+            self.update_batch_status()
             self.iteration += 1
 
             # Sleep for a bit to avoid overloading the server
@@ -40,8 +40,12 @@ class AbstractScript:
         """ Processes the next batch of data, called in a loop until the script is stopped """
         raise NotImplementedError
 
-    def update_status(self):
-        """ Updates the status to the backend, called after each batch is processed """
+    def update_batch_status(self):
+        """ Updates the batch status to the backend, called automatically after each batch is processed """
+        raise NotImplementedError
+
+    def get_status(self) -> Dict[str, Any]:
+        """ Can be called by the orchestrator to get the current status of the script """
         raise NotImplementedError
 
     def schedule_stop(self):
@@ -58,8 +62,22 @@ class AbstractScript:
             self._execution_complete_callback()
 
 
+class AbstractPipelineShutdownCallback:
+    def execute(self, container_id: str, container_port: int):
+        raise NotImplementedError
+
+
+class BackendPipelineShutdownCallback(AbstractPipelineShutdownCallback):
+    def execute(self, container_id: str, container_port: int):
+        try:
+            requests.delete(f"http://orchestrator:5000/pipelines/status/{self.container_id}")
+            time.sleep(3)
+        except Exception as e:
+            print(f"Failed to send pipeline shutdown signal to backend: {e}", file=sys.stderr)
+
+
 class Pipeline(Thread):
-    def __init__(self, container_id: str, container_port: int, script: AbstractScript):
+    def __init__(self, container_id: str, container_port: int, script: AbstractScript, shutdown_callback: AbstractPipelineShutdownCallback):
         super().__init__(daemon=False)
         self.container_id: str = container_id
         self.container_port: int = container_port
@@ -67,6 +85,9 @@ class Pipeline(Thread):
         # Pipeline script to run
         self.script: AbstractScript = script
         self.script.set_execution_complete_callback(self.shutdown)
+
+        # Callback to call when the pipeline is complete
+        self.shutdown_callback: AbstractPipelineShutdownCallback = shutdown_callback
 
         # Flask server to handle API requests
         self.flask_app: Flask = Flask(__name__)
@@ -83,6 +104,14 @@ class Pipeline(Thread):
 
             self.stop_script()
             return make_response({"message": "Successfully set stop-script flag"}, 200)
+
+        @self.flask_app.route("/status", methods=["GET"])
+        def get_status():
+            status = self.script.get_status()
+            return make_response({
+                "message": "OK",
+                "status": status
+            }, 200)
 
     def run(self):
         """ Starts the pipeline server and script execution """
@@ -104,11 +133,7 @@ class Pipeline(Thread):
         print("Stopping pipeline server...")
 
         # Send pipeline shutdown signal to backend
-        try:
-            requests.delete(f"http://backend:5000/pipelines/status/{self.container_id}")
-            time.sleep(3)
-        except Exception as e:
-            print(f"Failed to send pipeline shutdown signal to backend: {e}", file=sys.stderr)
+        self.shutdown_callback.execute(self.container_id, self.container_port)
 
         # Stop the pipeline server
         self.server.shutdown()
@@ -121,12 +146,27 @@ if __name__ == "__main__":
             print(f"Running batch #{self.iteration}")
             time.sleep(2)
 
-        def update_status(self):
+        def update_batch_status(self):
             print(f"Updating status for batch #{self.iteration}")
             time.sleep(2)
 
+        def get_status(self) -> Dict[str, Any]:
+            return {
+                "iteration": self.iteration
+            }
+
+
+    class DummyPipelineShutdownCallback(AbstractPipelineShutdownCallback):
+        def execute(self, container_id: str, container_port: int):
+            print(f"Shutting down pipeline at {container_id}:{container_port}")
+
 
     # Example usage
+    container_id = "test_container"
+    container_port = 5578
+
     script = DummyScript()
-    pipeline = Pipeline("test_container", 5578, script)
+    shutdown_callback = DummyPipelineShutdownCallback()
+
+    pipeline = Pipeline(container_id, container_port, script, shutdown_callback)
     pipeline.start()

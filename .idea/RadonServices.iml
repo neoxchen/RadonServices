@@ -9,6 +9,9 @@
       <sourceFolder url="file://$MODULE_DIR$/augmentations" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/fetch/src/commons" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
+      <excludeFolder url="file://$MODULE_DIR$/.idea/copilot/chatSessions" />
+      <excludeFolder url="file://$MODULE_DIR$/frontend/src/commons" />
+      <excludeFolder url="file://$MODULE_DIR$/backend/src/commons" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

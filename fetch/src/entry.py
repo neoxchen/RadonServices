@@ -1,5 +1,5 @@
 from commons.models.fits_interfaces import LinuxFitsInterface
-from commons.orchestration.pipeline import Pipeline
+from commons.orchestration.pipeline import Pipeline, BackendPipelineShutdownCallback
 from commons.utils.sql_utils import ClothoDockerPostgresClientFactory
 from constants import CONTAINER_ID, CONTAINER_PORT
 from script import FetchScript
@@ -13,5 +13,6 @@ if __name__ == "__main__":
     fits_interface = LinuxFitsInterface()
 
     script = FetchScript(postgres_factory, fits_interface)
-    pipeline = Pipeline(CONTAINER_ID, CONTAINER_PORT, script)
+    shutdown_callback = BackendPipelineShutdownCallback()
+    pipeline = Pipeline(CONTAINER_ID, CONTAINER_PORT, script, shutdown_callback)
     pipeline.start()

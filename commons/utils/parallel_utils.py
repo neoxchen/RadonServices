@@ -2,11 +2,11 @@ from threading import Thread
 from time import sleep
 
 
-def run_in_parallel(function, arg_list, thread_count=10, update_callback=None):
+def run_in_parallel(function, arg_list, thread_count=10, update_callback=None, **kwargs):
     result_list = [None] * len(arg_list)
     threads = []
     for parallel_index in range(thread_count):
-        thread = Thread(target=_run, args=(function, arg_list, result_list, parallel_index, thread_count, update_callback))
+        thread = Thread(target=_run, args=(function, arg_list, result_list, parallel_index, thread_count, update_callback, kwargs))
         thread.start()
         threads.append(thread)
 
@@ -17,13 +17,13 @@ def run_in_parallel(function, arg_list, thread_count=10, update_callback=None):
     return result_list
 
 
-def _run(function, arg_list, result_list, parallel_index, parallel_count, update_callback):
+def _run(function, arg_list, result_list, parallel_index, parallel_count, update_callback, kwargs):
     for i in range(0, len(arg_list), parallel_count):
         idx = i + parallel_index
         result = function(*arg_list[idx])
         result_list[idx] = result
         if update_callback:
-            update_callback()
+            update_callback(**kwargs)
 
 
 if __name__ == "__main__":

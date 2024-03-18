@@ -28,7 +28,7 @@ def safe_request(method):
             log.error(f"[{request_uid}] An internal exception has been caught by safe request:")
             log.error(f"[{request_uid}] {e}")
             log.error(f"[{request_uid}] {traceback.format_exc()}")
-            return {"message": "Internal server error, see console for details"}, 500
+            return {"message": str(e)}, 500
 
         return response
 

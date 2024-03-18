@@ -1,8 +1,13 @@
+from typing import Any, Dict
+
+import requests
 from flask import make_response, request
 from flask_restful import Resource
+from requests import Response
 
+import commons.utils.log_util as log
 from src.endpoints.wrappers import safe_request
-from src.shared_states import CONTAINER_STATUS, get_pipeline_type, PIPELINE_CONTAINERS
+from src.shared_states import CONTAINER_STATUS, get_pipeline_type, PIPELINE_CONTAINERS, get_container_address
 
 
 class PipelineStatusEndpoint(Resource):
@@ -14,11 +19,21 @@ class PipelineStatusEndpoint(Resource):
 
     @safe_request
     def get(self, container_id, uid):
-        """
-        Gets the status of the active pipelines, allowing for an optional pipeline type
-        - if no type is specified, it will retrieve the status of all pipelines
-        """
-        return make_response({"message": "OK", "status": CONTAINER_STATUS[container_id]}, 200)
+        if not request.args.get("instant", False):
+            return make_response({"message": "OK", "status": CONTAINER_STATUS[container_id]}, 200)
+
+        # Query the pipeline and return the instant status
+        container_url: str = f"{get_container_address(container_id)}/status"
+        try:
+            response: Response = requests.get(container_url, timeout=3)
+        except Exception as e:
+            log.error(f"Failed to fetch status from '{container_url}': {e}")
+            return make_response({
+                "error": f"Failed to fetch status from {container_id}!",
+            }, 404)
+
+        json: Dict[str, Any] = response.json()
+        return make_response({"message": "OK", "status": json["status"]}, 200)
 
     @safe_request
     def post(self, container_id, uid):

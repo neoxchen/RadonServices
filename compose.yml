@@ -40,13 +40,11 @@ services:
       - /home/neo/data/pgadmin:/var/lib/pgadmin
 
   # Backend controller, also a Flask API
-  backend:
-    container_name: backend
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+  orchestrator:
+    container_name: orchestrator
+    image: dockerneoc/radon:orchestrator
     volumes:
-      # Docker socket so that the backend can dynamically spawn containers
+      # Docker socket so that the orchestrator can dynamically spawn containers
       - $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock
     # Testing use only!
     # ports:
@@ -59,9 +57,7 @@ services:
   # Frontend container
   frontend:
     container_name: frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: dockerneoc/radon:web-interface
     volumes:
       # FITS data volume, used to preview galaxy data
       - /home/neo/data/fits:/fits-data

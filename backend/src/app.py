@@ -4,7 +4,8 @@ from flask import Flask, jsonify
 from flask_restful import Api
 
 import commons.utils.log_util as log
-from src.endpoints import PipelineEndpoint, PipelineStatusEndpoint
+from endpoints.pipeline_control import PipelineEndpoint
+from endpoints.pipeline_status import PipelineStatusEndpoint
 
 
 def create_app(options=None) -> Flask:

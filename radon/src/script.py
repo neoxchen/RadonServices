@@ -272,7 +272,7 @@ def run_script():
 
         # Call API to update status
         print(f"Updating pipeline status for iteration #{iteration}...")
-        requests.post(f"http://backend:5000/pipelines/status/{CONTAINER_ID}", json={
+        requests.post(f"http://orchestrator:5000/pipelines/status/{CONTAINER_ID}", json={
             "iteration": iteration,
             "galaxies": [result_entry.source_id for result_entry in result_rows if not result_entry.is_error],
             "errors": [result_entry.source_id for result_entry in result_rows if result_entry.is_error]
@@ -282,5 +282,5 @@ def run_script():
         iteration += 1
 
     # Signal pipeline shutdown
-    requests.delete(f"http://backend:5000/pipelines/status/{CONTAINER_ID}")
+    requests.delete(f"http://orchestrator:5000/pipelines/status/{CONTAINER_ID}")
     print("Radon pipeline script execution complete!")

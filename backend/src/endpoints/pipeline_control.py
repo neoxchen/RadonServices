@@ -8,7 +8,7 @@ from flask_restful import Api, Resource
 
 import commons.utils.log_util as log
 from commons.constants.pipeline_constants import VALID_PIPELINE_TYPES
-from src.docker_interface import boot_container_until_success
+from src.docker_interface import boot_container_until_success, add_pseudo_container
 from src.endpoints.wrappers import safe_request
 from src.shared_states import PIPELINE_CONTAINERS, get_container_by_id, get_container_address
 
@@ -71,23 +71,33 @@ class PipelineEndpoint(Resource):
         """
         # Check if pipeline type is valid
         pipeline_type = pipeline_type.lower()
+        if pipeline_type == "pseudo":
+            add_pseudo_container("pipeline-fetch", "pseudo-container-id", 5578)
+            return make_response({"message": "OK", "new_pipeline": "fetch", "ports": 5578}, 200)
+
         if pipeline_type not in VALID_PIPELINE_TYPES:
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
                 "valid_types": VALID_PIPELINE_TYPES
             }, 400)
 
-        # Dynamically spin up the corresponding pipeline
-        log.request(uid, f"Spinning up a new '{pipeline_type}' pipeline...")
+        pipeline_config: Dict[str, Any] = request.get_json()
+        log.request(uid, f"Creating a new '{pipeline_type}' pipeline with the following configuration: {pipeline_config}")
 
-        fits_volume: Mount = Mount(target="/fits-data", source="/home/neo/data/fits", type="bind")
+        environment_vars: Dict[str, Any] = {}
+        for key, value in pipeline_config.items():
+            if key.startswith("env"):
+                environment_vars[key.replace("env_", "").upper()] = value
+        log.request(uid, f"Set environment variables: {environment_vars}")
+
+        fits_volume: Mount = Mount(target="/fits-data", source=pipeline_config["fits_volume_path"], type="bind")
         new_ports = boot_container_until_success(
             f"pipeline-{pipeline_type}",
             environment={
                 # Note: port & container ID information will be automatically added
             },
             mounts=[fits_volume],
-            network="radonservices_radon_network"  # note the radonservices prefix because compose adds that
+            network="radonservices_radon_network"  # note the 'radonservices' prefix because compose adds that
         )
 
         return make_response({

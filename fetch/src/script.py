@@ -1,7 +1,7 @@
 import sys
 from decimal import Decimal
 from time import sleep
-from typing import List, Tuple
+from typing import List, Tuple, Any, Dict
 
 import requests
 from psycopg2 import extensions
@@ -26,8 +26,13 @@ class FetchScript(AbstractScript):
         # - format: [(status, failed_attempts, source_id), ...]
         self.status_cache: List[Tuple[str, int, str]] = []
 
+        # Cache of the current iteration's progress
+        # - max progress is SQL_BATCH_SIZE
+        self.iteration_progress: int = 0
+
     def run_batch(self):
         print(f"Starting iteration #{self.iteration}...")
+        self.iteration_progress = 0
 
         # Query and lock a batch of galaxies
         with self.postgres_client.cursor() as cursor:
@@ -50,8 +55,12 @@ class FetchScript(AbstractScript):
             return
 
         # Process in parallel with 5 threads
+        def update_progress(pbar: tqdm):
+            pbar.update()
+            self.iteration_progress += 1
+
         with tqdm(range(len(results))) as pbar:
-            fetch_results: List[Tuple[str, bool, int]] = run_in_parallel(self.parallel_fetch, results, thread_count=5, update_callback=lambda: pbar.update())
+            fetch_results: List[Tuple[str, bool, int]] = run_in_parallel(self.parallel_fetch, results, thread_count=4, update_callback=update_progress, pbar=pbar)
 
         # Transform results into a format that can be used in the SQL query
         sql_friendly_results: List[Tuple[str, int, str]] = []
@@ -120,12 +129,19 @@ class FetchScript(AbstractScript):
         """ Builds a URL to fetch a FITS file from the Legacy Survey API DR-10 """
         return f"https://www.legacysurvey.org/viewer/fits-cutout?ra={ra}&dec={dec}&layer=ls-dr10&size={size}&pixscale={pix_scale}&bands={bands}"
 
-    def update_status(self):
+    def update_batch_status(self):
         print(f"Updating status for iteration #{self.iteration}...")
         try:
-            requests.post(f"http://backend:5000/pipelines/status/{CONTAINER_ID}", json={
+            requests.post(f"http://orchestrator:5000/pipelines/status/{CONTAINER_ID}", json={
                 "iteration": self.iteration,
                 "processed": self.status_cache
             })
         except Exception as e:
             print(f"Failed to update pipeline status to backend: {e}", file=sys.stderr)
+
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "iteration": self.iteration,
+            "iteration_progress": self.iteration_progress,
+            "iteration_max_progress": SQL_BATCH_SIZE
+        }
