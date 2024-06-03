@@ -25,7 +25,7 @@ class PipelineEndpoint(Resource):
         """ Gets the status of the active pipelines by type """
         # Check if pipeline type is valid
         pipeline_type: str = pipeline_type.lower()
-        if ContainerType.is_valid_pipeline_type(pipeline_type):
+        if not ContainerType.is_valid_pipeline_type(pipeline_type):
             log.request(uid, f"Received invalid pipeline type '{pipeline_type}'")
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
@@ -56,7 +56,7 @@ class PipelineEndpoint(Resource):
         """ Creates a new pipeline of the corresponding pipeline type """
         # Check if pipeline type is valid
         pipeline_type: str = pipeline_type.lower()
-        if ContainerType.is_valid_pipeline_type(pipeline_type):
+        if not ContainerType.is_valid_pipeline_type(pipeline_type):
             log.request(uid, f"Received invalid pipeline type '{pipeline_type}'")
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",
@@ -98,7 +98,7 @@ class PipelineEndpoint(Resource):
         """ Gracefully shuts down the pipeline of the corresponding type """
         # Check if pipeline type is valid
         pipeline_type: str = pipeline_type.lower()
-        if ContainerType.is_valid_pipeline_type(pipeline_type):
+        if not ContainerType.is_valid_pipeline_type(pipeline_type):
             log.request(uid, f"Received invalid pipeline type '{pipeline_type}'")
             return make_response({
                 "error": f"Invalid pipeline type {pipeline_type}!",

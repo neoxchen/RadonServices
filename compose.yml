@@ -62,6 +62,8 @@ services:
   frontend:
     container_name: frontend
     image: dockerneoc/radon:web-interface
+    environment:
+      - CONTAINER_MODE=production
     volumes:
       # FITS data volume, used to preview galaxy data
       - /home/neo/data/fits:/fits-data
