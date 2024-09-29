@@ -68,6 +68,17 @@ class ClothoDockerPostgresClientFactory(AbstractPostgresClientFactory):
         )
 
 
+class ClothoTestingPostgresClientFactory(AbstractPostgresClientFactory):
+    def create(self) -> PostgresClient:
+        return PostgresClient(
+            host="localhost",
+            port="5452",
+            user="radon",
+            password="radon2023",
+            database="radon_sql_v4"
+        )
+
+
 class LocalPostgresClientFactory(AbstractPostgresClientFactory):
     def create(self) -> PostgresClient:
         return PostgresClient(
