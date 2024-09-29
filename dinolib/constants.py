@@ -14,4 +14,8 @@ class ContainerType(Enum):
     def get_image_tag(self) -> str:
         if self.is_pipeline():
             return f"pipeline-{self.value}"
-        return self.value
+        # TODO: optimize this
+        elif self == ContainerType.BACKEND:
+            return "orchestrator"
+        elif self == ContainerType.FRONTEND:
+            return "web-interface"

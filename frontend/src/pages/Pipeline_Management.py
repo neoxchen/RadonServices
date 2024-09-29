@@ -2,23 +2,24 @@ from typing import Any, Dict, List
 
 import requests
 import streamlit as st
+from frontend_constants import CONTAINER_MODE, PIPELINE_DESCRIPTIONS
+from interfaces import get_orchestrator_url
 
 from commons.constants.pipeline_constants import ContainerType
-from src.frontend_constants import CONTAINER_MODE, PIPELINE_DESCRIPTIONS
-from src.interfaces import get_orchestrator_url
-
-st.set_page_config(page_title=f"Pipeline Status ({CONTAINER_MODE})")
 
 
 @st.cache_data
 def get_pipelines() -> Dict[ContainerType, List[Dict[str, Any]]]:
     pipelines = {}
-    for container_type in ContainerType.get_pipeline_types():
-        container_type_str = container_type.value
-        response = requests.get(f"{get_orchestrator_url()}/pipelines/{container_type_str}")
-        if response.status_code != 200:
-            continue
-        pipelines[container_type] = response.json()["containers"]
+    try:
+        for container_type in ContainerType.get_pipeline_types():
+            container_type_str = container_type.value
+            response = requests.get(f"{get_orchestrator_url()}/pipelines/{container_type_str}")
+            if response.status_code != 200:
+                continue
+            pipelines[container_type] = response.json()["containers"]
+    except Exception as e:
+        st.error(f"Failed to get pipelines: {e}")
 
     return pipelines
 
@@ -58,6 +59,7 @@ if "create_pipeline_response" not in st.session_state:
     st.session_state.create_pipeline_response = None
 
 # Website starts
+st.set_page_config(page_title=f"Pipeline Status ({CONTAINER_MODE})")
 st.title("Pipeline Management")
 with st.sidebar:
     st.button(label="Clear Cache & Refresh", on_click=clear_all_cache)
@@ -71,27 +73,33 @@ st.write(PIPELINE_DESCRIPTIONS[pipeline_type])
 # Pipeline Configurations
 pipeline_config_expander = st.expander("Pipeline configurations", expanded=False)
 
+profile: str = pipeline_config_expander.selectbox("Profile", ["neo", "sofia"])
+profile_repository_map: Dict[str, str] = {
+    "neo": "dockerneoc/radon",
+    "sofia": "sperezdetudela/dinosaur"
+}
+
 # Global configurations (for all pipelines)
 pipeline_config: Dict[str, Any] = {
-    "fits_volume_path": pipeline_config_expander.text_input("FITS Path", value="/sharedata/raid0hdd/neo/data/fits"),
+    "batch_fits_volume_path": pipeline_config_expander.text_input("Batch FITS Path", value=f"/sharedata/raid0hdd/{profile}/data/batch"),
+    "env_sql_batch_size": pipeline_config_expander.number_input("Batch Size", value=512, min_value=512, max_value=512),
     # Also has 'image_repository' and 'image_tag', but those can be pre-filled based on pipeline type
 }
 
 # Pipeline-specific configurations
 if pipeline_type == "fetch":
     cols: List[st.delta_generator.DeltaGenerator] = pipeline_config_expander.columns(2)
-    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value="dockerneoc/radon")
+    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value=profile_repository_map[profile])
     pipeline_config["image_tag"]: str = cols[1].text_input("Image Tag", value="pipeline-fetch")
 
-    pipeline_config["env_sql_batch_size"]: int = cols[0].number_input("Batch Size", value=200, min_value=100, max_value=500)
-    pipeline_config["env_max_fails"]: int = cols[1].number_input("Max Fails", value=1, min_value=1, max_value=5)
+    pipeline_config["env_max_fails"]: int = pipeline_config_expander.number_input("Max Fails", value=1, min_value=1, max_value=5)
 elif pipeline_type == "radon":
     cols: List[st.delta_generator.DeltaGenerator] = pipeline_config_expander.columns(2)
-    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value="dockerneoc/radon")
+    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value=profile_repository_map[profile])
     pipeline_config["image_tag"]: str = cols[1].text_input("Image Tag", value="pipeline-radon")
 elif pipeline_type == "augment":
     cols: List[st.delta_generator.DeltaGenerator] = pipeline_config_expander.columns(2)
-    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value="dockerneoc/radon")
+    pipeline_config["image_repository"]: str = cols[0].text_input("Image Repository", value=profile_repository_map[profile])
     pipeline_config["image_tag"]: str = cols[1].text_input("Image Tag", value="pipeline-augment")
 
 pipeline_config_expander.write("**Final Configurations:**")

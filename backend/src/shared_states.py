@@ -4,8 +4,8 @@ import redis
 
 from commons.constants.pipeline_constants import ContainerType, STARTING_PORT_NUMBER
 from commons.utils.redis_utils import RedisClient, AbstractRedisClientFactory, ClothoDockerRedisClientFactory, LocalRedisClientFactory
-from docker_interface import PipelineContainer
 from constants import CONTAINER_MODE
+from docker_interface import PipelineContainer
 
 
 class RedisKey:
@@ -68,7 +68,12 @@ class RedisInterface:
     def get_next_port(self) -> int:
         with self.redis_client.connection() as r:
             r: redis.Redis
-            return r.incr(RedisKey.current_port_key(), amount=STARTING_PORT_NUMBER)
+            return STARTING_PORT_NUMBER + r.incr(RedisKey.current_port_key(), amount=1)
+
+    def reset_current_port(self) -> None:
+        with self.redis_client.connection() as r:
+            r: redis.Redis
+            r.set(RedisKey.current_port_key(), 0)
 
 
 def create_redis_interface(production: bool = True) -> RedisInterface:

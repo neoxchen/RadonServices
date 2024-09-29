@@ -23,4 +23,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Invoke entrypoint script
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--chdir", "/src", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--chdir", "./src", "app:app"]

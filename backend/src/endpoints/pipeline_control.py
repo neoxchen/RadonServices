@@ -74,8 +74,8 @@ class PipelineEndpoint(Resource):
                 environment_vars[key.replace("env_", "").upper()] = value
         log.request(uid, f"Set environment variables: {environment_vars}")
 
-        fits_volume: Mount = Mount(target="/fits-data", source=pipeline_config["fits_volume_path"], type="bind")
-        new_ports = boot_container_until_success(
+        fits_volume: Mount = Mount(target="/batch-fits-data", source=pipeline_config["batch_fits_volume_path"], type="bind")
+        new_container: Optional[PipelineContainer] = boot_container_until_success(
             container_type=container_type,
             control_port=redis_interface.get_next_port(),
             repository=image_repository,
@@ -90,7 +90,7 @@ class PipelineEndpoint(Resource):
         return make_response({
             "message": "OK",
             "new_pipeline": pipeline_type,
-            "ports": new_ports
+            "ports": new_container.port
         }, 200)
 
     @safe_request

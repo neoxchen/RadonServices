@@ -2,23 +2,40 @@ import streamlit as st
 from matplotlib import pyplot as plt
 
 from commons.constants.fits_constants import FITS_BANDS
-from commons.models.fits_interfaces import AbstractFitsInterface, GalaxyFitsData, BandFitsBuilder, LinuxFitsInterface
-from commons.utils.sql_utils import AbstractPostgresClientFactory, PostgresClient, ClothoDockerPostgresClientFactory
+from commons.models.denoisers import AbstractDenoiser, LowPassDenosier
+from commons.models.fits_interfaces import AbstractBatchFilePathGenerator, GalaxyFitsData, BatchFileReader, BatchFitsReader, LocalTestingBatchFilePathGenerator, \
+    LinuxBatchFilePathGenerator
+from commons.models.mask_generators import CircleMaskGenerator, AbstractMaskGenerator
+from commons.models.radon_transformers import RadonTransformer
+from commons.utils.sql_utils import AbstractPostgresClientFactory, PostgresClient, ClothoDockerPostgresClientFactory, LocalPostgresClientFactory
 
-# postgres_factory: AbstractPostgresClientFactory = LocalPostgresClientFactory()
-postgres_factory: AbstractPostgresClientFactory = ClothoDockerPostgresClientFactory()
+# Initialize variables
+container_mode = "production"
+if container_mode == "production":
+    # Use clotho-based interfaces
+    postgres_factory: AbstractPostgresClientFactory = ClothoDockerPostgresClientFactory()
+    batch_path_generator: AbstractBatchFilePathGenerator = LinuxBatchFilePathGenerator()
+else:
+    # Use local/testing interfaces
+    postgres_factory: AbstractPostgresClientFactory = LocalPostgresClientFactory()
+    batch_path_generator: AbstractBatchFilePathGenerator = LocalTestingBatchFilePathGenerator()
+
+mask_generator: AbstractMaskGenerator = CircleMaskGenerator()
+radon_transformer: RadonTransformer = RadonTransformer(mask_generator)
+denoiser: AbstractDenoiser = LowPassDenosier()
+
 postgres_client: PostgresClient = postgres_factory.create()
 
-# fits_interface: AbstractFitsInterface = LocalTestingFitsInterface()
-fits_interface: AbstractFitsInterface = LinuxFitsInterface()
-
 # State variables
+if "preview_galaxies" not in st.session_state:
+    st.session_state.preview_galaxies = []
 if "preview_galaxies_result" not in st.session_state:
     st.session_state.preview_galaxies_result = []
 
 
 @st.cache_data
 def fetch_galaxy_data(query):
+    print(f"Fetching data with query: {query}")
     with postgres_client.cursor() as cursor:
         cursor.execute(query)
         results = cursor.fetchall()
@@ -34,6 +51,7 @@ def clear_all_cache():
 st.title("Data Preview")
 with st.sidebar:
     st.button(label="Clear Cache & Refresh", on_click=clear_all_cache)
+    st.write(f"Running in {container_mode} mode")
 
 col1, col2 = st.columns(2)
 # UID or source ID galaxy filter
@@ -42,7 +60,7 @@ with col1:
     if id_type == "Source ID":
         galaxy_id = st.text_input("Enter source ID", placeholder="e.g. 5937148114675443200")
     else:
-        galaxy_id = st.number_input("Enter galaxy UID", placeholder="e.g. 123", value=None)
+        galaxy_id = st.number_input("Enter galaxy UID", value=12345)
 
 # Additional galaxy filters such as ra, dec
 with col2:
@@ -66,11 +84,13 @@ limit = st.number_input("Limit", min_value=1, max_value=1000, value=100, step=10
 st.subheader("Generated SQL query:")
 
 where_clauses = []
-if st.session_state.preview_galaxies:
-    sql_id_type = "source_id" if id_type == "Source ID" else "id"
+try:
+    sql_id_type = "source_id" if id_type == "Source ID" else "uid"
     sql_id_value = f"'{galaxy_id}'" if id_type == "Source ID" else int(galaxy_id)
     id_where = f"g.{sql_id_type} = {sql_id_value}"
     where_clauses.append(id_where)
+except Exception as e:
+    st.error(f"Error parsing ID: {e}")
 
 if use_ra:
     where_clauses.append(f"ra BETWEEN {ra_min} AND {ra_max}")
@@ -88,7 +108,7 @@ if where_clauses:
 
 # Add suffixes
 sql_builder += [
-    "GROUP BY g.id",
+    "GROUP BY g.uid",
     f"LIMIT {limit}"
 ]
 
@@ -110,19 +130,19 @@ else:
     st.write(f"Galaxy Probability: {gal_prob}")
     st.write(f"Status: {status} (Fails: {fails})")
 
-    if status == "Fetched" or status == "Transformed":
-        fits_data: GalaxyFitsData = fits_interface.load_fits(source_id, bin_id)
-
-        columns = st.columns(4)
-        for i, band in enumerate(FITS_BANDS):
-            with columns[i]:
-                band_fits_data: BandFitsBuilder = fits_data.get_band_data(band)
-                if not band_fits_data:
-                    st.write(f"No FITS data for band {band}")
-                    continue
-
-                st.write(f"Band {band}:")
-                fig, ax = plt.subplots()
-                ax.imshow(band_fits_data.build(), cmap="gray")
-                plt.axis("off")
-                st.pyplot(fig)
+    # if status == "Fetched" or status == "Transformed":
+    #     fits_data: GalaxyFitsData = fits_interface.load_fits(source_id, bin_id)
+    #
+    #     columns = st.columns(4)
+    #     for i, band in enumerate(FITS_BANDS):
+    #         with columns[i]:
+    #             band_fits_data: BandFitsBuilder = fits_data.get_band_data(band)
+    #             if not band_fits_data:
+    #                 st.write(f"No FITS data for band {band}")
+    #                 continue
+    #
+    #             st.write(f"Band {band}:")
+    #             fig, ax = plt.subplots()
+    #             ax.imshow(band_fits_data.build(), cmap="gray")
+    #             plt.axis("off")
+    #             st.pyplot(fig)

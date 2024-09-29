@@ -1,5 +1,5 @@
 from commons.utils.sql_utils import AbstractPostgresClientFactory, PostgresClient, ClothoDockerPostgresClientFactory, LocalPostgresClientFactory
-from src.constants import CONTAINER_MODE
+from frontend_constants import CONTAINER_MODE
 
 # Postgres client initialization
 if CONTAINER_MODE == "production":

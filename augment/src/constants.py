@@ -21,7 +21,7 @@ AUGMENTATION_COUNT = int(os.getenv("AUGMENTATION_COUNT", 100))
 print(f"Configured environment variable AUGMENTATION_COUNT as {AUGMENTATION_COUNT}")
 
 # Number of threads to use for parallel processing
-THREAD_COUNT = int(os.getenv("THREAD_COUNT", 64))
+THREAD_COUNT = int(os.getenv("THREAD_COUNT", 32))
 print(f"Configured environment variable THREAD_COUNT as {THREAD_COUNT}")
 
 # Maximum number of running errors to calculate for each galaxy

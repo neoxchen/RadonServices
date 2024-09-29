@@ -1,0 +1,50 @@
+// Data table
+Table galaxies {
+  // Generated ID for each galaxy in the database
+  uid bigserial [pk, not null]
+  // Unique source ID for each galaxy
+  source_id Varchar [not null, unique]
+
+  // == Position Data ==
+  ra Decimal(25, 20) [not null]
+  dec Decimal(25, 20) [not null]
+
+  // == Fetch-Related Metadata ==
+  gal_prob Decimal(25, 20) [not null]
+  status Varchar [not null, default: 'Pending']
+  failed_attempts SmallInt [not null, default: 0]
+}
+
+// Data container table for bands
+// This table is populated by the 'Fetch' pipeline using 'galaxies'
+// We'll be treating each band as independent most of the time
+Table bands {
+  uid bigserial [pk, not null]
+  // The galaxy that this band is from
+  source_id Varchar [ref: > galaxies.source_id]
+  // Band identifier, such as u/g/r/i/z
+  band Char [not null]
+
+  // == Location Metadata ==
+  // UUID4 of the bin (folder) identifier
+  bin_id Varchar [not null]
+  // UUID4 of the batch (.batch) identifier
+  batch_id Varchar [not null]
+  // Index of the band's data in the fits file
+  fits_index smallint [not null]
+}
+
+// Table that contains position-angle (rotation)
+Table rotations {
+  band_id bigint [pk, ref: > bands.uid]
+  has_data boolean [default: false]
+  // Number format: XXX.XX
+  degree decimal(7, 4) [not null, default: 0, note: "0 <= x < 180"]
+  total_error float [not null, default: 0]
+  running_count int [not null, default: 0]
+}
+
+Table ellipticity {
+  band_id bigint [pk, ref: > bands.uid]
+  has_data boolean [default: false]
+}

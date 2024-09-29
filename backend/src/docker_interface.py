@@ -96,7 +96,7 @@ def boot_container_until_success(container_type: ContainerType, control_port: in
         log.info(f"Successfully pulled '{repository}:{image_tag}' from Docker Hub!")
 
         # Attempts to boot the container at the port
-        DOCKER_CLIENT.containers.run(
+        container: Container = DOCKER_CLIENT.containers.run(
             image=f"{repository}:{image_tag}",
             environment=environment,
             mounts=mounts,

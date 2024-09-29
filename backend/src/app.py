@@ -7,6 +7,7 @@ import commons.utils.log_util as log
 from constants import CONTAINER_MODE
 from endpoints.pipeline_control import PipelineEndpoint
 from endpoints.pipeline_status import PipelineStatusEndpoint
+from src.shared_states import redis_interface
 
 
 def create_app() -> Flask:
@@ -29,6 +30,9 @@ def create_app() -> Flask:
 
 # Variable accessed by the entrypoint
 app: Flask = create_app()
+
+# Reset the current port on startup
+redis_interface.reset_current_port()
 
 if __name__ == "__main__":
     # Warning: this starts the *debug* server (not secure)

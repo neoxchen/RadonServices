@@ -64,7 +64,7 @@ class ClothoDockerPostgresClientFactory(AbstractPostgresClientFactory):
             port="5432",
             user="radon",
             password="radon2023",
-            database="radon_sql_v3"
+            database="radon_sql_v4"
         )
 
 
@@ -75,7 +75,7 @@ class LocalPostgresClientFactory(AbstractPostgresClientFactory):
             port="5432",
             user="radon",
             password="radon2023",
-            database="radon_sql_v3"
+            database="radon_sql_v4"
         )
 
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             environment={
                 "POSTGRES_USER": "radon",
                 "POSTGRES_PASSWORD": "radon2023",
-                "POSTGRES_DB": "radon_sql_v3"
+                "POSTGRES_DB": "radon_sql_v4"
             },
             mounts=[mount],
             detach=True
