@@ -1,6 +1,6 @@
-import tempfile
-from contextlib import contextmanager
-from typing import Dict, Optional, ContextManager, Any, List
+import sys
+from io import BytesIO
+from typing import Dict, Optional, List, Generator
 
 import numpy as np
 from astropy.io import fits
@@ -79,48 +79,44 @@ class GalaxyFitsData:
         return self._band_data_map[band]
 
 
-class BatchFileReader:
-    """ Interface for reading batch files """
+class BatchFitsReader:
+    """ Interface for reading batch files as a collection of FITS data """
 
     def __init__(self, batch_file_path: str):
         self.batch_file_path: str = batch_file_path
         self.batch_file: BatchFile = BatchFile.from_file(batch_file_path)
 
+        # Create an index of FITS files for quick access
+        self.fits_index: Dict[str, FileMetadata] = {}
+        for fits_metadata in self.batch_file.metadata_list:
+            self.fits_index[fits_metadata.get_file_name()] = fits_metadata
+
     @staticmethod
-    def from_file(file_path: str) -> "BatchFileReader":
-        return BatchFileReader(file_path)
+    def from_file(file_path: str) -> "BatchFitsReader":
+        return BatchFitsReader(file_path)
 
-    @contextmanager
-    def decompress(self) -> ContextManager[Any]:
-        """ Decompresses the batch file into a temporary folder and yields that folder's path """
-        with tempfile.TemporaryDirectory() as temp_directory_path:
-            temp_directory_path: str
-            self.batch_file.decompress(temp_directory_path)
-            # print(f"Decompressed batch file to {temp_directory_path}")
-            yield BatchFitsReader(self.batch_file, temp_directory_path)
-
-
-class BatchFitsReader:
-    """ Reader for individual FITS files within a batch, returned as a context manager """
-
-    def __init__(self, batch_file: BatchFile, temp_directory_path: str):
-        self.batch_file: BatchFile = batch_file
-        self.temp_directory_path: str = temp_directory_path
-
-    def get_fits(self, source_id: str) -> GalaxyFitsData:
+    def get_fits(self, file_name: str, suffix: str = ".fits") -> GalaxyFitsData:
         """ Loads FITS data for a single galaxy """
-        fits_file_path: str = f"{self.temp_directory_path}/{source_id}.fits"
-        # print(f"Loading FITS data for {source_id} from {fits_file_path}")
-        with fits.open(fits_file_path, memmap=False) as hdu_list:
-            fits_data_list: np.ndarray = hdu_list[0].data
+        try:
+            fits_file_like: BytesIO = self.fits_index[f"{file_name}{suffix}"].get_as_file_like()
+            with fits.open(fits_file_like, memmap=False) as hdu_list:
+                fits_data_list: np.ndarray = hdu_list[0].data
 
-        return GalaxyFitsData(source_id, fits_data_list)
+            return GalaxyFitsData(file_name, fits_data_list)
+        except Exception as e:
+            print(f"Error loading FITS data for {file_name}", file=sys.stderr)
+            raise e
+
+    def loop_fits(self) -> Generator[GalaxyFitsData, None, None]:
+        for file_name in self.fits_index.keys():
+            file_name: str
+            yield self.get_fits(file_name, suffix="")
 
     def size(self) -> int:
-        return len(self.batch_file.fits_metadata_list)
+        return len(self.batch_file.metadata_list)
 
     def get_files(self) -> List[FileMetadata]:
-        return self.batch_file.fits_metadata_list
+        return self.batch_file.metadata_list
 
 
 # Class batch fits writer or something like that
@@ -152,9 +148,14 @@ class AbstractBatchFilePathGenerator:
         raise NotImplementedError
 
 
-class LinuxBatchFilePathGenerator(AbstractBatchFilePathGenerator):
+class ClothoDockerBatchFilePathGenerator(AbstractBatchFilePathGenerator):
     def generate(self, bin_id: str, batch_id: str) -> str:
         return f"/batch-fits-data/{bin_id}/{batch_id}.batch"
+
+
+class ClothoTestingBatchFilePathGenerator(AbstractBatchFilePathGenerator):
+    def generate(self, bin_id: str, batch_id: str) -> str:
+        return f"/home/neo/sharedata/data/batch/{bin_id}/{batch_id}.batch"
 
 
 class LocalTestingBatchFilePathGenerator(AbstractBatchFilePathGenerator):
@@ -166,18 +167,19 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from commons.models.mask_generators import CircleMaskGenerator
 
-    batch_file_reader: BatchFileReader = BatchFileReader.from_file("C:/One/UCI/Alberto/data/batch/26d9f5ea118f42abb1f7ad1862f931d0/00a494d9c7b44b3b945020c64576eb7e.batch")
-    with batch_file_reader.decompress() as batch_fits_reader:
-        batch_fits_reader: BatchFitsReader
-        print(f"Loaded {batch_fits_reader.size()} FITS files:")
-        print(batch_fits_reader.get_files())
+    reader: BatchFitsReader = BatchFitsReader.from_file("C:/One/UCI/Alberto/data/batch/26d9f5ea118f42abb1f7ad1862f931d0/00a494d9c7b44b3b945020c64576eb7e.batch")
+    print(f"Loaded {reader.size()} FITS files:")
+    print(reader.get_files())
 
-        galaxy_fits_data: GalaxyFitsData = batch_fits_reader.get_fits("5774750036766162304")
+    for i, galaxy_fits_data in enumerate(reader.loop_fits()):
+        i: int
+        galaxy_fits_data: GalaxyFitsData
         print(f"Loaded FITS data for galaxy {galaxy_fits_data.source_id}")
 
-    target_band: str = "g"
-    band_data: BandFitsBuilder = galaxy_fits_data.get_band_data(target_band)
+        if i == 0:
+            target_band: str = "g"
+            band_data: BandFitsBuilder = galaxy_fits_data.get_band_data(target_band)
 
-    mask_generator: AbstractMaskGenerator = CircleMaskGenerator()
-    plt.imshow(band_data.mask(mask_generator).build(), cmap="gray")
-    plt.show()
+            mask_generator: AbstractMaskGenerator = CircleMaskGenerator()
+            plt.imshow(band_data.mask(mask_generator).build(), cmap="gray")
+            plt.show()

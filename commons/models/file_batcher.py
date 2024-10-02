@@ -1,5 +1,6 @@
 import json
 import os
+from io import BytesIO
 from typing import Any, Dict, List
 from typing import Tuple
 
@@ -24,13 +25,17 @@ class FileMetadata:
     def get_file_name(self) -> str:
         return os.path.basename(self.file_path)
 
+    def get_as_file_like(self) -> BytesIO:
+        file_like: BytesIO = BytesIO(self.file_data)
+        return file_like
+
     def __repr__(self) -> str:
         return f"FileMetadata(file_path={self.file_path}, file_length={self.file_length})"
 
 
 class BatchFile:
     """
-    Represents a batch FITS file, which is a collection of files concatenated together
+    Represents a batch file, which is a collection of files concatenated together
     This file consists of a JSON header and a concatenation of the included files
 
     The JSON header occupies the first line of the file and contains the following fields:
@@ -40,8 +45,8 @@ class BatchFile:
     - index (Dict[str, Tuple[int, int]]): a mapping of file names to their (start positions, file lengths) in the batch file
     """
 
-    def __init__(self, fits_metadata_list: List[FileMetadata]):
-        self.fits_metadata_list: List[FileMetadata] = fits_metadata_list
+    def __init__(self, metadata_list: List[FileMetadata]):
+        self.metadata_list: List[FileMetadata] = metadata_list
 
     @staticmethod
     def from_file(batch_file_path: str) -> "BatchFile":
@@ -54,13 +59,13 @@ class BatchFile:
             header: Dict[str, Any] = json.loads(header_str)
 
             # Read individual files
-            fits_metadata_list: List[FileMetadata] = []
-            for fits_file_name, (start_pos, file_length) in header["index"].items():
+            metadata_list: List[FileMetadata] = []
+            for file_name, (start_pos, file_length) in header["index"].items():
                 file.seek(header["offset"] + start_pos)
                 file_data: bytes = file.read(file_length)
-                fits_metadata_list.append(FileMetadata(fits_file_name, file_length, file_data))
+                metadata_list.append(FileMetadata(file_name, file_length, file_data))
 
-        return BatchFile(fits_metadata_list)
+        return BatchFile(metadata_list)
 
     def compress(self, output_directory: str, output_file_name: str) -> None:
         """ Compresses individual files into a single batch file """
@@ -72,9 +77,9 @@ class BatchFile:
             file.write(header.encode())
             file.write("\n".encode())
 
-            for fits_metadata in self.fits_metadata_list:
-                with open(fits_metadata.file_path, "rb") as fits_file:
-                    file.write(fits_file.read())
+            for metadata in self.metadata_list:
+                with open(metadata.file_path, "rb") as current_file:
+                    file.write(current_file.read())
                     file.write("\n".encode())
 
     def decompress(self, output_directory: str) -> None:
@@ -82,19 +87,19 @@ class BatchFile:
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
 
-        for fits_metadata in self.fits_metadata_list:
-            with open(os.path.join(output_directory, fits_metadata.get_file_name()), "wb") as file:
-                file.write(fits_metadata.file_data)
+        for metadata in self.metadata_list:
+            with open(os.path.join(output_directory, metadata.get_file_name()), "wb") as file:
+                file.write(metadata.file_data)
 
     def _generate_header(self) -> str:
         index: Dict[str, Tuple[int, int]] = {}
         files: List[str] = []
         current_offset: int = 0
-        for fits_metadata in self.fits_metadata_list:
-            fits_metadata: FileMetadata
-            index[fits_metadata.get_file_name()] = (current_offset, fits_metadata.file_length)
-            files.append(fits_metadata.get_file_name())
-            current_offset += fits_metadata.file_length + 1  # Add 1 for the newline character at the end of each FITS file
+        for metadata in self.metadata_list:
+            metadata: FileMetadata
+            index[metadata.get_file_name()] = (current_offset, metadata.file_length)
+            files.append(metadata.get_file_name())
+            current_offset += metadata.file_length + 1  # Add 1 for the newline character at the end of each file
 
         header: Dict[str, Any] = {
             "count": len(files),
@@ -113,13 +118,13 @@ class BatchFile:
         return json.dumps(header, separators=(',', ':'))
 
     def __repr__(self) -> str:
-        return f"BatchFile[{len(self.fits_metadata_list)}]"
+        return f"BatchFile[{len(self.metadata_list)}]"
 
 
 if __name__ == "__main__":
     import filecmp
 
-    intput_directory: str = "C:/One/UCI/Alberto/data/fits/b0"
+    intput_directory: str = "C:/One/UCI/Alberto/data/batch/26d9f5ea118f42abb1f7ad1862f931d0"
     output_directory: str = "C:/One/UCI/Alberto/RadonExploration/notebooks/v3/temp"
     output_decompressed_directory: str = os.path.join(output_directory, "decompressed")
     compressed_file_name: str = "compressed.batch"
@@ -143,7 +148,7 @@ if __name__ == "__main__":
     # Validate before and after
     print("Validating files...")
     mismatched_files: List[Tuple[str, str]] = []
-    for i, (original_metadata, loaded_metadata) in enumerate(zip(batch_file.fits_metadata_list, loaded_batch_file.fits_metadata_list)):
+    for i, (original_metadata, loaded_metadata) in enumerate(zip(batch_file.metadata_list, loaded_batch_file.metadata_list)):
         i: int
         original_metadata: FileMetadata
         loaded_metadata: FileMetadata

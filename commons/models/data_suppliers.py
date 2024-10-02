@@ -1,13 +1,14 @@
 import random
-import sys
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 import numpy as np
 import skimage
 from astropy.io import fits
 from psycopg2 import sql
 
-from commons.constants.fits_constants import FITS_DIRECTORY_PATH
+from commons.constants.fits_constants import FITS_DIRECTORY_PATH, BATCH_FITS_SIZE, FITS_BANDS
+from commons.models.fits_interfaces import AbstractBatchFilePathGenerator, BatchFitsReader, GalaxyFitsData, BandFitsBuilder, LocalTestingBatchFilePathGenerator
+from commons.models.sql_models import SqlBand
 from commons.utils.sql_utils import AbstractPostgresClientFactory, PostgresClient
 
 
@@ -79,38 +80,49 @@ class EllipseDataSupplier(AbstractDataSupplier):
 class GalaxyDataSupplier(AbstractDataSupplier):
     """ Fetches galaxy data from the database """
 
-    def __init__(self, client_factory: AbstractPostgresClientFactory):
+    def __init__(self, client_factory: AbstractPostgresClientFactory, batch_path_generator: AbstractBatchFilePathGenerator):
         self.client: PostgresClient = client_factory.create()
+        self.batch_path_generator: AbstractBatchFilePathGenerator = batch_path_generator
 
     def supply(self, count: int = 1) -> List[DataSupplyResult]:
-        # Fetch twice as many galaxies as needed to account for any that may be unusable
-        fetch_count = count * 2
+        if count > BATCH_FITS_SIZE:
+            raise DataSupplyError(f"Cannot supply more than {BATCH_FITS_SIZE} galaxy data at once")
+
+        # Query for a single galaxy, as we'll fetch the entire batch it's in
         with self.client.cursor() as cursor:
             query = sql.SQL(f"""
-                SELECT g.source_id, g.bin_id
-                FROM galaxies g
-                WHERE g.status NOT IN ('Pending', 'Failed')
-                    AND g.gal_prob = 1
-                LIMIT {fetch_count}
+                SELECT * FROM bands
+                WHERE has_error = FALSE
+                LIMIT 1
             """)
             cursor.execute(query)
+            results: List[SqlBand] = [SqlBand(*row) for row in cursor.fetchall()]
 
-            galaxy_data_list = []
-            i = 0
-            while len(galaxy_data_list) < count and i < fetch_count:
-                try:
-                    source_id, bin_id = cursor.fetchone()
-                    galaxy_data = self._fetch_galaxy_fits(source_id, bin_id)
-                    if galaxy_data is not None:
-                        galaxy_data_result = DataSupplyResult(galaxy_data, {"source_id": source_id, "bin_id": bin_id})
-                        galaxy_data_list.append(galaxy_data_result)
-                except Exception as e:
-                    print(f"Error fetching galaxy ({len(galaxy_data_list)}/{count}): {e}", file=sys.stderr)
-                finally:
-                    i += 1
+        if not results:
+            raise DataSupplyError("No galaxy data available")
 
-        if len(galaxy_data_list) < count:
-            raise DataSupplyError(f"Failed to supply {count} galaxy data, only supplied {len(galaxy_data_list)}")
+        batch_file_path: str = self.batch_path_generator.generate(results[0].bin_id, results[0].batch_id)
+        reader: BatchFitsReader = BatchFitsReader.from_file(batch_file_path)
+
+        galaxy_data_list: List[DataSupplyResult] = []
+
+        current_supply_count: int = 0
+        for galaxy_fits_data in reader.loop_fits():
+            galaxy_fits_data: GalaxyFitsData
+            if current_supply_count >= count:
+                break
+
+            for band in FITS_BANDS:
+                band: str
+                if current_supply_count >= count:
+                    break
+
+                band_data: Optional[BandFitsBuilder] = galaxy_fits_data.get_band_data(band)
+                if not band_data:
+                    continue
+                galaxy_data_result: DataSupplyResult = DataSupplyResult(band_data.build(), {"source_id": galaxy_fits_data.source_id, "band": band})
+                galaxy_data_list.append(galaxy_data_result)
+                current_supply_count += 1
 
         return galaxy_data_list
 
@@ -138,12 +150,13 @@ if __name__ == "__main__":
     from commons.utils.sql_utils import LocalPostgresClientFactory
 
     # Create local database client
-    postgres_client_factory = LocalPostgresClientFactory()
+    postgres_client_factory: AbstractPostgresClientFactory = LocalPostgresClientFactory()
+    batch_path_generator: AbstractBatchFilePathGenerator = LocalTestingBatchFilePathGenerator()
 
     # Preview generators
     temp_count = 5
     temp_data_supply = EllipseDataSupplier((8, 18), (5, 10)).supply(temp_count)
-    temp_data_supply += GalaxyDataSupplier(postgres_client_factory).supply(temp_count)
+    temp_data_supply += GalaxyDataSupplier(postgres_client_factory, batch_path_generator).supply(temp_count)
 
     fig, ax = plt.subplots(2, 5, figsize=(10, 4))
     for i in range(temp_count * 2):
