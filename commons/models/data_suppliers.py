@@ -4,9 +4,11 @@ from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 import skimage
 from psycopg2 import sql
+from scipy.ndimage import gaussian_filter
 
 from commons.constants.fits_constants import BATCH_FITS_SIZE, FITS_BANDS
 from commons.models.fits_interfaces import AbstractBatchFilePathGenerator, BatchFitsReader, GalaxyFitsData, BandFitsBuilder, LocalTestingBatchFilePathGenerator
+from commons.models.image import AbstractImage, SingleChannelImage
 from commons.models.sql_models import SqlBand
 from commons.utils.sql_utils import AbstractPostgresClientFactory, PostgresClient
 
@@ -82,7 +84,7 @@ class EllipseDataSupplier(AbstractDataSupplier):
         if np.min(canvas) < 0:
             canvas += np.abs(np.min(canvas))
 
-        return DataEntry(canvas, {
+        return DataEntry(SingleChannelImage(canvas), {
             "major": major,
             "minor": minor,
             "rotation": rotation
@@ -143,6 +145,102 @@ class GalaxyDataSupplier(AbstractDataSupplier):
         return DataSupplyResult(galaxy_data_list)
 
 
+class AbstractIntensityProfileDataSupplier(AbstractDataSupplier):
+    """ Supplies synthetic galaxy data based on intensity profiles """
+
+    def supply(self, count: int = 1, ellipticity: float = 0, rotation_degree: int = 0, psf_sigma: float = 1, noise: float = 0.003) -> DataSupplyResult:
+        image_shape: Tuple[int, int] = (40, 40)
+        return DataSupplyResult([self._supply_one(image_shape, ellipticity=ellipticity, rotation_degree=rotation_degree, psf_sigma=psf_sigma, noise=noise) for _ in range(count)])
+
+    def _supply_one(self, image_shape: Tuple[int, int], ellipticity: float = 0, rotation_degree: int = 0, psf_sigma: float = 1, noise: float = 0.003) -> DataEntry:
+        # Generate the canvas
+        x, y = np.meshgrid(np.arange(image_shape[0]), np.arange(image_shape[1]))
+        x: np.ndarray = x - image_shape[0] // 2
+        y: np.ndarray = y - image_shape[1] // 2
+
+        # Rotate the coordinates
+        radians: float = np.deg2rad(rotation_degree)
+        x_prime: np.ndarray = x * np.cos(radians) - y * np.sin(radians)
+        y_prime: np.ndarray = x * np.sin(radians) + y * np.cos(radians)
+
+        # Incorporate the ellipticity
+        q: float = 1 - ellipticity
+        radius: np.ndarray = np.sqrt(x_prime ** 2 + (y_prime / q) ** 2)
+
+        # Calculate the distance from the center
+        raw_image: np.ndarray = self._calculate_intensity(radius)
+
+        # Normalize & clip
+        raw_image = raw_image / np.max(raw_image)
+        raw_image = np.clip(raw_image, 0, 1)
+
+        # Simulate point spread function (PSF) via Gaussian filter
+        raw_image = gaussian_filter(raw_image, sigma=psf_sigma)
+
+        # Add Gaussian noise
+        raw_image += np.random.normal(0, noise, raw_image.shape)
+        raw_image = np.clip(raw_image, 0, 1)
+
+        metadata: Dict[str, Any] = self._get_general_metadata()
+        metadata.update({
+            "ellipticity": ellipticity,
+            "rotation_degree": rotation_degree,
+            "psf_sigma": psf_sigma,
+            "noise": noise
+        })
+
+        image: AbstractImage = SingleChannelImage(raw_image, metadata)
+        return DataEntry(image, metadata)
+
+    def _calculate_intensity(self, distance_from_center: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    def _get_general_metadata(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+
+class SersicDataSupplier(AbstractIntensityProfileDataSupplier):
+    """
+    Uses the Sersic intensity profile to simulate galaxy images
+    I(R) = I_e * exp(-b_n * ((R / R_e) ^ (1 / n) - 1))
+
+    Where:
+    - I(R) is the intensity at radius R
+    - R_e is the effective (half-light) radius
+    - I_e is the intensity at R_e
+    - n is the Sersic index, where n = 1 is an exponential profile and n = 4 is a de Vaucouleurs profile
+    - b_n is a constant that depends on n
+    """
+
+    def __init__(self, sersic_index: float, effective_intensity: float, effective_radius: float):
+        self.sersic_index: float = sersic_index
+        self.effective_intensity: float = effective_intensity
+        self.effective_radius: float = effective_radius
+
+    def _calculate_intensity(self, distance_from_center: np.ndarray) -> np.ndarray:
+        b_n: float = self._calculate_b_n(self.sersic_index)
+        return self.effective_intensity * np.exp(-b_n * ((distance_from_center / self.effective_radius) ** (1 / self.sersic_index) - 1))
+
+    def _get_general_metadata(self) -> Dict[str, Any]:
+        return {
+            "effective_radius": self.effective_radius,
+            "effective_intensity": self.effective_intensity,
+            "sersic_index": self.sersic_index
+        }
+
+    @staticmethod
+    def _calculate_b_n(n: float):
+        """ Asymptotic form for b_n """
+        return 2 * n - 0.324 + 4.0 / (405 * n) + 46.0 / (25515 * n ** 2) + 131.0 / (1148175 * n ** 3) - 2194697.0 / (30690717750 * n ** 4)
+
+
+class DeVaucouleursDataSupplier(SersicDataSupplier):
+    """ Uses the de Vaucouleurs intensity profile to simulate galaxy images, a special case of the Sersic profile with n = 4 """
+
+    def __init__(self, effective_intensity: float, effective_radius: float):
+        super().__init__(4, effective_intensity, effective_radius)
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from commons.utils.sql_utils import LocalPostgresClientFactory
@@ -155,10 +253,13 @@ if __name__ == "__main__":
     temp_count: int = 5
     temp_data_supply: List[DataEntry] = EllipseDataSupplier((8, 18), (5, 10)).supply(temp_count).entries
     temp_data_supply += GalaxyDataSupplier(postgres_client_factory, batch_path_generator).supply(temp_count).entries
+    temp_data_supply += SersicDataSupplier(1, 10, 100).supply(temp_count, ellipticity=0.4).entries
+    temp_data_supply += DeVaucouleursDataSupplier(10, 100).supply(temp_count, ellipticity=0.4).entries
 
-    fig, ax = plt.subplots(2, 5, figsize=(10, 4))
-    for i in range(temp_count * 2):
-        ax[i // 5, i % 5].imshow(temp_data_supply[i].data, cmap="gray")
+    fig, ax = plt.subplots(4, 5, figsize=(10, 4))
+    for i in range(len(temp_data_supply)):
+        image: AbstractImage = temp_data_supply[i].data
+        ax[i // 5, i % 5].imshow(image.get_image(), cmap="gray")
         ax[i // 5, i % 5].axis('off')
 
     plt.tight_layout()

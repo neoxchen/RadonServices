@@ -1,11 +1,13 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import scipy.ndimage as ndimage
 
 
 class AbstractImage:
-    def __init__(self, metadata: Dict[str, Any]):
+    def __init__(self, metadata: Optional[Dict[str, Any]] = None):
+        if metadata is None:
+            metadata = {}
         self.metadata: Dict[str, Any] = metadata
 
     def get_image(self) -> np.ndarray:
@@ -16,7 +18,7 @@ class AbstractImage:
 
 
 class SingleChannelImage(AbstractImage):
-    def __init__(self, image: np.ndarray, metadata: dict):
+    def __init__(self, image: np.ndarray, metadata: Optional[Dict[str, Any]] = None):
         super().__init__(metadata)
         self.image: np.ndarray = image
 
