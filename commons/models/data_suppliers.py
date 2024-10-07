@@ -40,6 +40,9 @@ class AbstractDataSupplier:
     def supply(self, count: int = 1) -> DataSupplyResult:
         raise NotImplementedError
 
+    def get_source_name(self) -> str:
+        raise NotImplementedError
+
 
 class EllipseDataSupplier(AbstractDataSupplier):
     """ Supplies synthetic ellipse data """
@@ -95,6 +98,9 @@ class EllipseDataSupplier(AbstractDataSupplier):
         radius_minor: float = random.uniform(*self.radius_minor_bounds)
         return radius_major, radius_minor
 
+    def get_source_name(self) -> str:
+        return "Ellipse"
+
 
 class GalaxyDataSupplier(AbstractDataSupplier):
     """ Fetches galaxy data from the database """
@@ -143,6 +149,9 @@ class GalaxyDataSupplier(AbstractDataSupplier):
                 current_supply_count += 1
 
         return DataSupplyResult(galaxy_data_list)
+
+    def get_source_name(self) -> str:
+        return "Galaxy"
 
 
 class AbstractIntensityProfileDataSupplier(AbstractDataSupplier):
@@ -233,12 +242,18 @@ class SersicDataSupplier(AbstractIntensityProfileDataSupplier):
         """ Asymptotic form for b_n """
         return 2 * n - 0.324 + 4.0 / (405 * n) + 46.0 / (25515 * n ** 2) + 131.0 / (1148175 * n ** 3) - 2194697.0 / (30690717750 * n ** 4)
 
+    def get_source_name(self) -> str:
+        return F"SersicProfile[n={self.sersic_index}, I_e={self.effective_intensity}, R_e={self.effective_radius}]"
+
 
 class DeVaucouleursDataSupplier(SersicDataSupplier):
     """ Uses the de Vaucouleurs intensity profile to simulate galaxy images, a special case of the Sersic profile with n = 4 """
 
     def __init__(self, effective_intensity: float, effective_radius: float):
         super().__init__(4, effective_intensity, effective_radius)
+
+    def get_source_name(self) -> str:
+        return F"DeVaucouleursProfile[I_e={self.effective_intensity}, R_e={self.effective_radius}]"
 
 
 if __name__ == "__main__":
