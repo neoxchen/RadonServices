@@ -20,13 +20,12 @@ def run_in_parallel(function, arg_list, thread_count=10, update_callback=None, *
 
 
 def _run(function, arg_list, result_list, parallel_index, parallel_count, update_callback, kwargs):
-    for i in range(0, len(arg_list), parallel_count):
-        idx = i + parallel_index
+    for i in range(parallel_index, len(arg_list), parallel_count):
         try:
-            result = function(*arg_list[idx])
-            result_list[idx] = result
+            result = function(*arg_list[i])
+            result_list[i] = result
         except Exception as e:
-            print(f"Encountered exception while parallel processing #{idx}/{len(arg_list)}: {e}", file=sys.stderr)
+            print(f"Encountered exception while parallel processing #{i}/{len(arg_list)}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
         if update_callback:
@@ -35,9 +34,9 @@ def _run(function, arg_list, result_list, parallel_index, parallel_count, update
 
 if __name__ == "__main__":
     def plus_one(original):
-        sleep(2)
+        sleep(0.01)
         return original + 1
 
 
-    results = run_in_parallel(plus_one, [[a] for a in range(20)])
+    results = run_in_parallel(plus_one, [[a] for a in range(100)], thread_count=32)
     print(results)
