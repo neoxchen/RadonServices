@@ -26,7 +26,7 @@ def _run(function, arg_list, result_list, parallel_index, parallel_count, update
             result = function(*arg_list[idx])
             result_list[idx] = result
         except Exception as e:
-            print(f"Error in parallel process: {e}", file=sys.stderr)
+            print(f"Encountered exception while parallel processing #{idx}/{len(arg_list)}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
         if update_callback:
