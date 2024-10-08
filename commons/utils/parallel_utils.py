@@ -1,4 +1,5 @@
 import sys
+import traceback
 from threading import Thread
 from time import sleep
 
@@ -26,6 +27,7 @@ def _run(function, arg_list, result_list, parallel_index, parallel_count, update
             result_list[idx] = result
         except Exception as e:
             print(f"Error in parallel process: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
         if update_callback:
             update_callback(**kwargs)
